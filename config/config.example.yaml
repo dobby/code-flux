@@ -1,0 +1,96 @@
+app:
+  baseUrl: "http://localhost:8080"
+  dataDir: "/tmp/code-flux"
+  openBrowserOnStart: false
+  logLevel: "INFO"
+
+git:
+  executable: "git"
+  mirrorDir: "/tmp/code-flux/mirrors"
+  timeoutSeconds: 120
+  includeMergeCommits: false
+  deduplicateByPatchId: true
+  useAuthoredDate: true
+  auth:
+    httpUsername: "oauth2"
+    httpToken: "${GITLAB_HTTP_TOKEN:}"
+
+repos:
+  - id: "marcando-api"
+    displayName: "Marcando API"
+    cloneUrl: "https://gitlab.encima.be/shop/marcando-api.git"
+    enabled: true
+    productCode: "MARCANDO"
+    branchPatterns:
+      - "main"
+      - "develop"
+      - "feature/*"
+    excludeBranchPatterns:
+      - "archive/*"
+      - "tmp/*"
+    excludePathGlobs:
+      - "docs/**"
+      - "generated/**"
+
+authors:
+  include:
+    - id: "eli"
+      displayName: "Eli"
+      emails:
+        - "eli@marcando.be"
+      names:
+        - "Eli"
+      cohort: "agentic"
+    - id: "sander"
+      displayName: "Sander"
+      emails:
+        - "sander@encima.be"
+      names:
+        - "Sander"
+      cohort: "non-agentic"
+
+classification:
+  languageByExtension:
+    kt: "kotlin"
+    kts: "kotlin"
+    java: "java"
+    ts: "typescript"
+    tsx: "typescript"
+    js: "javascript"
+    jsx: "javascript"
+    sql: "sql"
+    yaml: "yaml"
+    yml: "yaml"
+    md: "markdown"
+  rules:
+    - id: "unit-tests-jvm"
+      whenPathMatches:
+        - "**/src/test/**"
+      category: "test"
+      subtype: "unit_test"
+    - id: "docs"
+      whenPathMatches:
+        - "**/*.md"
+        - "**/docs/**"
+      category: "docs"
+      subtype: "docs"
+    - id: "generated"
+      whenPathMatches:
+        - "**/generated/**"
+      category: "generated"
+      subtype: "generated"
+
+uiDefaults:
+  defaultMetric: "lines_added"
+  defaultGroupBy: "author"
+  defaultDateFrom: "2025-01-01"
+  defaultIncludeCategories:
+    - "production"
+  defaultExcludeCategories:
+    - "test"
+    - "docs"
+    - "generated"
+    - "config"
+
+syncWindow:
+  from: "2025-01-01"

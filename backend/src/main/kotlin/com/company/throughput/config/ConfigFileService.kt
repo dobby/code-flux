@@ -109,6 +109,10 @@ class ConfigFileService(
         ) {
             "uiDefaults.defaultDateTo must be on or after uiDefaults.defaultDateFrom"
         }
+        requireSupportedChartLibrary(
+            value = document.uiDefaults.defaultChartLibrary,
+            label = "uiDefaults.defaultChartLibrary",
+        )
         document.authors.include.forEach { author ->
             require(author.emails.isNotEmpty() || author.names.isNotEmpty()) {
                 "Author ${author.id} must define at least one email or name alias"

@@ -26,6 +26,7 @@ data class BootstrapAuthorDto(
 data class UiDefaultsDto(
     val defaultMetric: String,
     val defaultGroupBy: String,
+    val defaultChartLibrary: String,
     val defaultIncludeCategories: List<String>,
     val defaultExcludeCategories: List<String>,
     val defaultDateFrom: LocalDate?,
@@ -55,6 +56,7 @@ class BootstrapController(
         uiDefaults = UiDefaultsDto(
             defaultMetric = resolvedDashboardConfig.uiDefaults.defaultMetric,
             defaultGroupBy = resolvedDashboardConfig.uiDefaults.defaultGroupBy,
+            defaultChartLibrary = resolvedDashboardConfig.uiDefaults.defaultChartLibrary,
             defaultIncludeCategories = resolvedDashboardConfig.uiDefaults.defaultIncludeCategories,
             defaultExcludeCategories = resolvedDashboardConfig.uiDefaults.defaultExcludeCategories,
             defaultDateFrom = resolvedDashboardConfig.uiDefaults.defaultDateFrom,

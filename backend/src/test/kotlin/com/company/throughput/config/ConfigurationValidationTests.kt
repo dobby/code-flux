@@ -143,4 +143,37 @@ class ConfigurationValidationTests {
 
         kotlin.test.assertTrue(exception.message!!.contains("git executable"))
     }
+
+    @Test
+    fun `unsupported chart library fails validation`() {
+        val exception = assertThrows(IllegalArgumentException::class.java) {
+            DashboardConfigFactory().resolvedDashboardConfig(
+                appProperties = AppProperties(),
+                gitProperties = GitProperties(),
+                repoListProperties = RepoListProperties(
+                    entries = listOf(
+                        RepoConfig(
+                            id = "repo",
+                            displayName = "Repo",
+                            cloneUrl = "https://example/repo.git",
+                            branchPatterns = listOf("main"),
+                        ),
+                    ),
+                ),
+                authorsProperties = AuthorsProperties(
+                    include = listOf(
+                        AuthorConfig(
+                            id = "eli",
+                            displayName = "Eli",
+                            emails = listOf("eli@example.com"),
+                        ),
+                    ),
+                ),
+                classificationProperties = ClassificationProperties(),
+                uiDefaultsProperties = UiDefaultsProperties(defaultChartLibrary = "plotly"),
+            )
+        }
+
+        kotlin.test.assertTrue(exception.message!!.contains("defaultChartLibrary"))
+    }
 }

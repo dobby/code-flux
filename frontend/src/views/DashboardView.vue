@@ -11,34 +11,22 @@ import {
   Expand,
   Files,
   GitCommitHorizontal,
-  Info,
   LoaderCircle,
   MoreHorizontal,
   Minimize2,
   Plus,
   PencilLine,
-  RefreshCcw,
-  Moon,
-  Settings2,
   SlidersHorizontal,
   Sparkles,
-  Square,
-  Sun,
   TrendingDown,
   TrendingUp,
 } from 'lucide-vue-next'
-import { getConfigFile, updateConfigFile } from '../api/client'
-import { useTheme } from '../composables/useTheme'
 import { buildChartOption, getSeriesColor } from '../lib/chart'
 import { useDashboardStore } from '../stores/dashboard'
-import type { Annotation, AnnotationType, GroupBy, Metric } from '../types/api'
+import type { Annotation, AnnotationType, ChartLibrary, GroupBy, Metric } from '../types/api'
 
 const store = useDashboardStore()
-const { isDark, toggleTheme } = useTheme()
 const annotationDialog = ref<HTMLDialogElement | null>(null)
-const configDialog = ref<HTMLDialogElement | null>(null)
-const syncInfoTrigger = ref<HTMLElement | null>(null)
-const syncInfoPopover = ref<HTMLElement | null>(null)
 const filterTrigger = ref<HTMLElement | null>(null)
 const filterPopover = ref<HTMLElement | null>(null)
 const annotationTrigger = ref<HTMLElement | null>(null)
@@ -47,8 +35,6 @@ const dateTrigger = ref<HTMLElement | null>(null)
 const datePopover = ref<HTMLElement | null>(null)
 const comparisonTrigger = ref<HTMLElement | null>(null)
 const comparisonPopover = ref<HTMLElement | null>(null)
-const chartControlsTrigger = ref<HTMLElement | null>(null)
-const chartControlsPopover = ref<HTMLElement | null>(null)
 const toolbarOverflowTrigger = ref<HTMLElement | null>(null)
 const toolbarOverflowPopover = ref<HTMLElement | null>(null)
 const chartPanel = ref<HTMLElement | null>(null)
@@ -57,22 +43,12 @@ const chartRef = ref<InstanceType<typeof VChart> | null>(null)
 const chartJsRef = ref<InstanceType<typeof ChartJsRenderer> | null>(null)
 const isChartFullscreen = ref(false)
 const annotationListOpen = ref(false)
-const configDialogOpen = ref(false)
-const syncInfoOpen = ref(false)
 const datePopoverOpen = ref(false)
 const comparisonPopoverOpen = ref(false)
-const chartControlsOpen = ref(false)
 const toolbarOverflowOpen = ref(false)
 const datePreset = ref('custom')
 const anonymizeAuthors = ref(false)
-const chartLibrary = ref<'echarts' | 'chartjs'>('echarts')
 const chartToolbarWidth = ref(0)
-const configYaml = ref('')
-const configPath = ref('')
-const configLoading = ref(false)
-const configSaving = ref(false)
-const configError = ref<string | null>(null)
-const configSaveNotice = ref<string | null>(null)
 
 const metricOptions: Array<{ value: Metric; label: string }> = [
   { value: 'lines_added', label: 'Lines Added' },
@@ -110,8 +86,6 @@ const authorAliases = [
 ]
 
 const chartOption = computed(() => {
-  // eslint-disable-next-line no-unused-expressions -- force recompute on theme change
-  isDark.value
   return buildChartOption({
     analytics: store.analytics,
     comparisonAnalytics: store.comparisonAnalytics,
@@ -169,36 +143,8 @@ const comparisonReferenceTone = computed<'up' | 'down' | 'neutral'>(() => {
 const comparisonCurrentIcon = computed(() => resolveTrendIcon(comparisonCurrentTone.value))
 const comparisonReferenceIcon = computed(() => resolveTrendIcon(comparisonReferenceTone.value))
 
-const lastSyncText = computed(() => {
-  if (store.syncStatus?.running && store.syncStatus.lastRun?.finishedAt == null && store.syncStatus.lastRun?.startedAt) {
-    return new Date(store.syncStatus.lastRun.startedAt).toLocaleString()
-  }
-  const raw = store.syncStatus?.lastRun?.finishedAt ?? store.bootstrap?.lastSuccessfulSyncAt
-  if (!raw) {
-    return 'No successful sync yet'
-  }
-  return new Date(raw).toLocaleString()
-})
-
-const lastSyncLabel = computed(() => (
-  store.syncStatus?.running && store.syncStatus.lastRun?.finishedAt == null
-    ? 'Current run started'
-    : 'Last finished sync'
-))
-
-const lastRunStatusText = computed(() => store.syncStatus?.lastRun?.status ?? 'IDLE')
-const syncActionLabel = computed(() => {
-  if (store.currentSync?.stopRequested) {
-    return 'Stopping…'
-  }
-  if (store.syncStatus?.running) {
-    return 'Stop Sync'
-  }
-  return store.loading.sync ? 'Starting…' : 'Run Sync'
-})
-const syncActionTone = computed(() => (store.syncStatus?.running ? 'button--danger' : 'button--primary'))
-
 const currentTotals = computed(() => store.analytics?.totals ?? null)
+const chartLibrary = computed<ChartLibrary>(() => store.bootstrap?.uiDefaults.defaultChartLibrary ?? 'echarts')
 const dateRangeSummary = computed(() => {
   const preset = datePresetOptions.find((option) => option.value === datePreset.value)
   if (preset) {
@@ -261,13 +207,11 @@ const toolbarTier = computed<'wide' | 'medium' | 'compact' | 'tight' | 'micro'>(
 
 const showToolbarTitle = computed(() => toolbarTier.value !== 'micro')
 const showInlineGroupBy = computed(() => toolbarTier.value === 'wide' || toolbarTier.value === 'medium')
-const showInlineLibrary = computed(() => toolbarTier.value === 'wide' || toolbarTier.value === 'medium')
 const showInlineChartMode = computed(() => toolbarTier.value !== 'micro')
 const showInlineCompareToggle = computed(() => toolbarTier.value !== 'tight' && toolbarTier.value !== 'micro')
 const showInlineLegendToggle = computed(() => toolbarTier.value !== 'tight' && toolbarTier.value !== 'micro')
 const showToolbarOverflow = computed(() => (
   !showInlineGroupBy.value ||
-  !showInlineLibrary.value ||
   !showInlineChartMode.value ||
   !showInlineCompareToggle.value ||
   !showInlineLegendToggle.value
@@ -421,16 +365,8 @@ watch(anonymizeAuthors, (value) => {
   window.localStorage.setItem('code-flux-anonymize-authors', String(value))
 })
 
-watch(chartLibrary, (value) => {
-  window.localStorage.setItem('code-flux-chart-library', value)
-  queueChartResize()
-})
-
 watch(isChartFullscreen, (value) => {
   document.body.style.overflow = value ? 'hidden' : ''
-  if (!value) {
-    chartControlsOpen.value = false
-  }
   queueChartResize()
 })
 
@@ -461,6 +397,7 @@ watch(
     store.legendVisible,
     store.comparisonOverlayVisible,
     store.chartMode,
+    chartLibrary.value,
   ],
   async () => {
     await nextTick()
@@ -478,15 +415,10 @@ onMounted(() => {
     chartToolbarWidth.value = entry.contentRect.width
   })
   anonymizeAuthors.value = window.localStorage.getItem('code-flux-anonymize-authors') === 'true'
-  const storedChartLibrary = window.localStorage.getItem('code-flux-chart-library')
-  if (storedChartLibrary === 'chartjs' || storedChartLibrary === 'echarts') {
-    chartLibrary.value = storedChartLibrary
-  }
   document.addEventListener('fullscreenchange', syncFullscreenState)
   document.addEventListener('webkitfullscreenchange', syncFullscreenState as EventListener)
   document.addEventListener('pointerdown', handlePointerDown)
   document.addEventListener('keydown', handleGlobalKeydown)
-  void store.initialize()
 })
 
 onBeforeUnmount(() => {
@@ -511,28 +443,6 @@ watch(
     if (isOpen) {
       store.filterSheetOpen = false
       annotationListOpen.value = false
-      if (!dialog.open) {
-        dialog.showModal()
-      }
-      return
-    }
-
-    if (dialog.open) {
-      dialog.close()
-    }
-  },
-)
-
-watch(
-  () => configDialogOpen.value,
-  async (isOpen) => {
-    await nextTick()
-    const dialog = configDialog.value
-    if (!dialog) {
-      return
-    }
-
-    if (isOpen) {
       if (!dialog.open) {
         dialog.showModal()
       }
@@ -617,24 +527,12 @@ function handleDialogClose() {
   }
 }
 
-function closeConfigDialog() {
-  configDialogOpen.value = false
-}
-
-function handleConfigDialogClose() {
-  if (configDialogOpen.value) {
-    configDialogOpen.value = false
-  }
-}
-
 function toggleFilterPopover() {
   const nextValue = !store.filterSheetOpen
   store.filterSheetOpen = nextValue
   if (nextValue) {
-    syncInfoOpen.value = false
     annotationListOpen.value = false
     datePopoverOpen.value = false
-    chartControlsOpen.value = false
     toolbarOverflowOpen.value = false
   }
 }
@@ -643,22 +541,8 @@ function toggleAnnotationPopover() {
   const nextValue = !annotationListOpen.value
   annotationListOpen.value = nextValue
   if (nextValue) {
-    syncInfoOpen.value = false
     store.filterSheetOpen = false
     datePopoverOpen.value = false
-    chartControlsOpen.value = false
-    toolbarOverflowOpen.value = false
-  }
-}
-
-function toggleSyncInfoPopover() {
-  const nextValue = !syncInfoOpen.value
-  syncInfoOpen.value = nextValue
-  if (nextValue) {
-    store.filterSheetOpen = false
-    annotationListOpen.value = false
-    datePopoverOpen.value = false
-    chartControlsOpen.value = false
     toolbarOverflowOpen.value = false
   }
 }
@@ -667,11 +551,9 @@ function toggleDatePopover() {
   const nextValue = !datePopoverOpen.value
   datePopoverOpen.value = nextValue
   if (nextValue) {
-    syncInfoOpen.value = false
     store.filterSheetOpen = false
     annotationListOpen.value = false
     comparisonPopoverOpen.value = false
-    chartControlsOpen.value = false
     toolbarOverflowOpen.value = false
   }
 }
@@ -680,24 +562,9 @@ function toggleComparisonPopover() {
   const nextValue = !comparisonPopoverOpen.value
   comparisonPopoverOpen.value = nextValue
   if (nextValue) {
-    syncInfoOpen.value = false
     store.filterSheetOpen = false
     annotationListOpen.value = false
     datePopoverOpen.value = false
-    chartControlsOpen.value = false
-    toolbarOverflowOpen.value = false
-  }
-}
-
-function toggleChartControlsPopover() {
-  const nextValue = !chartControlsOpen.value
-  chartControlsOpen.value = nextValue
-  if (nextValue) {
-    syncInfoOpen.value = false
-    store.filterSheetOpen = false
-    annotationListOpen.value = false
-    datePopoverOpen.value = false
-    comparisonPopoverOpen.value = false
     toolbarOverflowOpen.value = false
   }
 }
@@ -706,63 +573,16 @@ function toggleToolbarOverflow() {
   const nextValue = !toolbarOverflowOpen.value
   toolbarOverflowOpen.value = nextValue
   if (nextValue) {
-    syncInfoOpen.value = false
     store.filterSheetOpen = false
     annotationListOpen.value = false
     datePopoverOpen.value = false
     comparisonPopoverOpen.value = false
-    chartControlsOpen.value = false
   }
 }
 
 function openAnnotationComposer(day?: string) {
   annotationListOpen.value = false
   store.openCreateAnnotation(day)
-}
-
-async function openConfigDialogPanel() {
-  syncInfoOpen.value = false
-  store.filterSheetOpen = false
-  annotationListOpen.value = false
-  datePopoverOpen.value = false
-  comparisonPopoverOpen.value = false
-  chartControlsOpen.value = false
-  toolbarOverflowOpen.value = false
-  store.annotationDialogOpen = false
-  configDialogOpen.value = true
-  configSaveNotice.value = null
-  await loadConfigFile()
-}
-
-async function loadConfigFile() {
-  configLoading.value = true
-  configError.value = null
-  try {
-    const response = await getConfigFile()
-    configYaml.value = response.yaml
-    configPath.value = response.path
-  } catch (caught) {
-    configError.value = toMessage(caught)
-  } finally {
-    configLoading.value = false
-  }
-}
-
-async function saveConfig() {
-  configSaving.value = true
-  configError.value = null
-  configSaveNotice.value = null
-  try {
-    const response = await updateConfigFile(configYaml.value)
-    configPath.value = response.path
-    configSaveNotice.value = response.restartRequired
-      ? 'Config saved. Restart the dashboard to apply backend changes.'
-      : 'Config saved.'
-  } catch (caught) {
-    configError.value = toMessage(caught)
-  } finally {
-    configSaving.value = false
-  }
 }
 
 function handlePointerDown(event: PointerEvent) {
@@ -774,9 +594,6 @@ function handlePointerDown(event: PointerEvent) {
   const insideFilter =
     filterTrigger.value?.contains(target) ||
     filterPopover.value?.contains(target)
-  const insideSyncInfo =
-    syncInfoTrigger.value?.contains(target) ||
-    syncInfoPopover.value?.contains(target)
   const insideAnnotations =
     annotationTrigger.value?.contains(target) ||
     annotationPopover.value?.contains(target) ||
@@ -787,16 +604,9 @@ function handlePointerDown(event: PointerEvent) {
   const insideComparison =
     comparisonTrigger.value?.contains(target) ||
     comparisonPopover.value?.contains(target)
-  const insideChartControls =
-    chartControlsTrigger.value?.contains(target) ||
-    chartControlsPopover.value?.contains(target)
   const insideToolbarOverflow =
     toolbarOverflowTrigger.value?.contains(target) ||
     toolbarOverflowPopover.value?.contains(target)
-
-  if (!insideSyncInfo) {
-    syncInfoOpen.value = false
-  }
 
   if (!insideFilter) {
     store.filterSheetOpen = false
@@ -814,10 +624,6 @@ function handlePointerDown(event: PointerEvent) {
     comparisonPopoverOpen.value = false
   }
 
-  if (!insideChartControls) {
-    chartControlsOpen.value = false
-  }
-
   if (!insideToolbarOverflow) {
     toolbarOverflowOpen.value = false
   }
@@ -825,11 +631,6 @@ function handlePointerDown(event: PointerEvent) {
 
 function handleGlobalKeydown(event: KeyboardEvent) {
   if (event.key !== 'Escape') {
-    return
-  }
-
-  if (chartControlsOpen.value) {
-    chartControlsOpen.value = false
     return
   }
 
@@ -852,22 +653,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     void exitChartFullscreen()
     return
   }
-
-  syncInfoOpen.value = false
   store.filterSheetOpen = false
   annotationListOpen.value = false
-}
-
-async function handleSyncAction() {
-  if (store.syncStatus?.running) {
-    await store.stopRunningSync()
-    return
-  }
-  await store.triggerSync()
-}
-
-function toMessage(caught: unknown): string {
-  return caught instanceof Error ? caught.message : 'Unexpected dashboard error'
 }
 
 function handleChartPointer(event: { offsetX: number; offsetY: number }) {
@@ -896,7 +683,6 @@ async function toggleChartFullscreen() {
   }
 
   datePopoverOpen.value = false
-  chartControlsOpen.value = false
 
   const element = chartPanel.value
   if (!element) {
@@ -915,9 +701,6 @@ function syncFullscreenState() {
   const fullscreenElement = getFullscreenElement()
   const isChartElement = fullscreenElement === chartPanel.value
   isChartFullscreen.value = isChartElement
-  if (!isChartElement) {
-    chartControlsOpen.value = false
-  }
   queueChartResize()
 }
 
@@ -984,7 +767,6 @@ async function requestChartFullscreen(element: HTMLElement) {
 async function exitChartFullscreen() {
   if (!getFullscreenElement()) {
     isChartFullscreen.value = false
-    chartControlsOpen.value = false
     queueChartResize()
     return
   }
@@ -1012,247 +794,12 @@ async function exitChartFullscreen() {
 </script>
 
 <template>
-  <main class="dashboard-shell">
-    <section class="dashboard-header" data-testid="dashboard-header">
-      <div class="dashboard-header__identity">
-        <p class="dashboard-header__label">Dashboard</p>
-        <h1>Code Flux</h1>
-      </div>
-
-      <div class="dashboard-header__meta">
-        <div class="header-actions">
-          <button class="button button--ghost" data-testid="theme-toggle" @click="toggleTheme()">
-            <Sun v-if="isDark" :size="15" />
-            <Moon v-else :size="15" />
-          </button>
-          <button class="button button--ghost" data-testid="anonymize-toggle" @click="anonymizeAuthors = !anonymizeAuthors">
-            <EyeOff v-if="anonymizeAuthors" :size="15" />
-            <Eye v-else :size="15" />
-            {{ anonymizeAuthors ? 'Reveal names' : 'Anonymize' }}
-          </button>
-          <button class="button button--ghost" data-testid="config-toggle" @click="openConfigDialogPanel">
-            <Settings2 :size="16" />
-            Configure
-          </button>
-          <div ref="filterTrigger" class="header-popover">
-            <button
-              class="button button--ghost"
-              :aria-expanded="store.filterSheetOpen"
-              aria-haspopup="dialog"
-              data-testid="filter-toggle"
-              @click="toggleFilterPopover"
-            >
-              <SlidersHorizontal :size="16" />
-              Filters
-            </button>
-
-            <aside
-              v-if="store.filterSheetOpen"
-              ref="filterPopover"
-              class="popover-panel popover-panel--filters"
-              data-testid="filter-area"
-            >
-              <div class="panel__header">
-                <div>
-                  <p class="section-tag">Filters</p>
-                  <h2>Refine the story</h2>
-                </div>
-                <button class="button button--ghost" type="button" @click="store.filterSheetOpen = false">Done</button>
-              </div>
-
-              <p class="popover-note">Selections update the chart, summary, and marker range automatically.</p>
-
-              <div v-if="store.options" class="popover-panel__body filter-groups">
-                <section>
-                  <h3>Authors</h3>
-                  <label v-for="author in store.options.authors" :key="author.id" class="filter-check">
-                    <input
-                      :checked="store.controls.filters.authorIds.includes(author.id)"
-                      type="checkbox"
-                      @change="toggleInList(store.controls.filters.authorIds, author.id)"
-                    />
-                    <span class="filter-swatch" :style="authorSwatchStyle(author.id)" aria-hidden="true" />
-                    <span>{{ displayAuthorName(author.id, author.displayName) }}</span>
-                  </label>
-                </section>
-
-                <section>
-                  <h3>Categories</h3>
-                  <label v-for="category in store.options.categories" :key="category" class="filter-check">
-                    <input
-                      :checked="store.controls.filters.categories.includes(category)"
-                      type="checkbox"
-                      @change="toggleInList(store.controls.filters.categories, category)"
-                    />
-                    <span>{{ category }}</span>
-                  </label>
-                </section>
-
-                <section>
-                  <h3>Languages</h3>
-                  <label v-for="language in store.options.languages" :key="language" class="filter-check">
-                    <input
-                      :checked="store.controls.filters.languages.includes(language)"
-                      type="checkbox"
-                      @change="toggleInList(store.controls.filters.languages, language)"
-                    />
-                    <span>{{ language }}</span>
-                  </label>
-                </section>
-
-                <section>
-                  <h3>Product codes</h3>
-                  <div v-for="group in reposByProductCode" :key="group.productCode" class="filter-group-block">
-                    <label class="filter-check filter-check--group">
-                      <input
-                        :checked="store.controls.filters.productCodes.includes(group.productCode)"
-                        type="checkbox"
-                        @change="toggleInList(store.controls.filters.productCodes, group.productCode)"
-                      />
-                      <span>{{ group.productCode }}</span>
-                    </label>
-                    <div class="filter-group-block__actions">
-                      <button class="filter-link" type="button" @click="setRepoGroupSelection(group.repos.map((repo) => repo.id), true)">All</button>
-                      <button class="filter-link" type="button" @click="setRepoGroupSelection(group.repos.map((repo) => repo.id), false)">None</button>
-                    </div>
-                    <div class="filter-subgroup">
-                      <label v-for="repo in group.repos" :key="repo.id" class="filter-check filter-check--nested">
-                        <input
-                          :checked="store.controls.filters.repoIds.includes(repo.id)"
-                          type="checkbox"
-                          @change="toggleInList(store.controls.filters.repoIds, repo.id)"
-                        />
-                        <span>{{ repo.displayName }}</span>
-                      </label>
-                    </div>
-                  </div>
-                </section>
-              </div>
-            </aside>
-          </div>
-
-          <div ref="annotationTrigger" class="header-popover">
-            <button
-              class="button button--ghost"
-              :aria-expanded="annotationListOpen"
-              aria-haspopup="dialog"
-              data-testid="annotate-button"
-              @click="toggleAnnotationPopover"
-            >
-              <PencilLine :size="16" />
-              Annotate
-            </button>
-
-            <aside
-              v-if="annotationListOpen"
-              ref="annotationPopover"
-              class="popover-panel popover-panel--annotations"
-              data-testid="annotation-popover"
-            >
-              <div class="panel__header">
-                <div>
-                  <p class="section-tag">Annotations</p>
-                  <h2>Story markers</h2>
-                </div>
-                <button class="button button--ghost" data-testid="annotation-new-button" @click="openAnnotationComposer()">New annotation</button>
-              </div>
-
-              <p class="popover-note">Use markers to label launches, incidents, and turning points directly on the timeline.</p>
-
-              <div v-if="store.loading.annotations" class="state state--compact">Loading annotations…</div>
-              <div v-else-if="!store.annotations.length" class="state state--compact">No annotations in the selected window.</div>
-              <ul v-else class="annotation-list annotation-list--compact" data-testid="annotation-list">
-                <li v-for="annotation in store.annotations" :key="annotation.annotationId">
-                  <button class="annotation-pill" :data-testid="`annotation-pill-${annotation.annotationId}`" @click="selectAnnotation(annotation)">
-                    <span>{{ annotation.day }}</span>
-                    <strong>{{ annotation.title }}</strong>
-                    <small>{{ annotation.type }}</small>
-                  </button>
-                </li>
-              </ul>
-            </aside>
-          </div>
-          <div ref="syncInfoTrigger" class="header-popover sync-cluster">
-            <button
-              class="button button--icon sync-cluster__info"
-              :class="syncActionTone"
-              :aria-expanded="syncInfoOpen"
-              aria-haspopup="dialog"
-              data-testid="sync-info-toggle"
-              @click="toggleSyncInfoPopover"
-            >
-              <Info :size="16" />
-            </button>
-            <button
-              class="button sync-cluster__action"
-              :class="syncActionTone"
-              data-testid="sync-button"
-              :disabled="store.currentSync?.stopRequested"
-              @click="handleSyncAction"
-            >
-              <LoaderCircle v-if="store.currentSync?.stopRequested" class="spin" :size="16" />
-              <Square v-else-if="store.syncStatus?.running" :size="15" />
-              <RefreshCcw v-else :size="16" />
-              {{ syncActionLabel }}
-            </button>
-
-            <aside
-              v-if="syncInfoOpen"
-              ref="syncInfoPopover"
-              class="popover-panel popover-panel--sync"
-              data-testid="sync-info-popover"
-            >
-              <div class="panel__header">
-                <div>
-                  <p class="section-tag">Sync info</p>
-                  <h2>{{ store.syncStatus?.running ? 'Sync in progress' : 'Latest sync' }}</h2>
-                </div>
-                <button class="button button--ghost" type="button" @click="syncInfoOpen = false">Close</button>
-              </div>
-
-              <div class="sync-summary">
-                <div class="status-card status-card--popover">
-                  <div class="status-card__label">{{ lastSyncLabel }}</div>
-                  <strong>{{ lastSyncText }}</strong>
-                  <span>{{ lastRunStatusText }}</span>
-                </div>
-
-                <div v-if="store.currentSync" class="sync-progress-card">
-                  <div class="sync-progress-card__head">
-                    <span>{{ store.currentSync.stage }}</span>
-                    <strong>{{ store.syncProgressPercent }}%</strong>
-                  </div>
-                  <div class="sync-progress-bar" aria-hidden="true">
-                    <div class="sync-progress-bar__fill" :style="{ width: `${store.syncProgressPercent}%` }" />
-                  </div>
-                  <p class="popover-note">
-                    {{ store.syncProgressLabel }}
-                    <template v-if="store.syncCurrentRepoLabel">
-                      · Now at {{ store.syncCurrentRepoLabel }}
-                    </template>
-                  </p>
-                  <p v-if="store.currentSync.stopRequested" class="dialog__feedback dialog__feedback--error">
-                    Stop requested. The worker will stop after the current repository finishes.
-                  </p>
-                </div>
-
-                <p v-else class="popover-note">No sync is currently running.</p>
-
-                <p v-if="store.syncStatus?.lastRun?.message" class="popover-note">
-                  {{ store.syncStatus.lastRun.message }}
-                </p>
-              </div>
-            </aside>
-          </div>
-        </div>
-      </div>
-    </section>
-
+  <main class="dashboard-shell dashboard-page">
     <section v-if="store.error" class="alert alert--error">{{ store.error }}</section>
 
     <section class="hero-grid">
       <article ref="chartPanel" class="hero-card hero-card--wide hero-card--chart" :class="{ 'hero-card--fullscreen': isChartFullscreen }">
-        <div v-if="!isChartFullscreen" class="hero-card__head">
+        <div class="hero-card__head">
           <h2 v-if="showToolbarTitle" class="chart-title">{{ store.selectedMetricLabel }}</h2>
           <div ref="chartToolbar" class="chart-toolbar" :class="`chart-toolbar--${toolbarTier}`">
             <label class="chart-toolbar__control">
@@ -1267,14 +814,154 @@ async function exitChartFullscreen() {
                 <option v-for="option in groupByOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
               </select>
             </label>
-            <div v-if="showInlineLibrary" class="segmented">
-              <button :class="{ active: chartLibrary === 'echarts' }" @click="chartLibrary = 'echarts'">ECharts</button>
-              <button :class="{ active: chartLibrary === 'chartjs' }" @click="chartLibrary = 'chartjs'">Chart.js</button>
+            <div ref="filterTrigger" class="header-popover">
+              <button
+                class="button button--ghost"
+                :aria-expanded="store.filterSheetOpen"
+                aria-haspopup="dialog"
+                data-testid="filter-toggle"
+                type="button"
+                @click="toggleFilterPopover"
+              >
+                <SlidersHorizontal :size="14" />
+                <span v-if="toolbarTier !== 'micro'">Filters</span>
+              </button>
+
+              <aside
+                v-if="store.filterSheetOpen"
+                ref="filterPopover"
+                class="popover-panel popover-panel--filters"
+                data-testid="filter-area"
+              >
+                <div class="panel__header">
+                  <div>
+                    <p class="section-tag">Filters</p>
+                    <h2>Refine the story</h2>
+                  </div>
+                  <button class="button button--ghost" type="button" @click="store.filterSheetOpen = false">Done</button>
+                </div>
+
+                <p class="popover-note">Selections update the chart, summary, and marker range automatically.</p>
+
+                <div v-if="store.options" class="popover-panel__body filter-groups">
+                  <section>
+                    <h3>Authors</h3>
+                    <label v-for="author in store.options.authors" :key="author.id" class="filter-check">
+                      <input
+                        :checked="store.controls.filters.authorIds.includes(author.id)"
+                        type="checkbox"
+                        @change="toggleInList(store.controls.filters.authorIds, author.id)"
+                      />
+                      <span class="filter-swatch" :style="authorSwatchStyle(author.id)" aria-hidden="true" />
+                      <span>{{ displayAuthorName(author.id, author.displayName) }}</span>
+                    </label>
+                  </section>
+
+                  <section>
+                    <h3>Categories</h3>
+                    <label v-for="category in store.options.categories" :key="category" class="filter-check">
+                      <input
+                        :checked="store.controls.filters.categories.includes(category)"
+                        type="checkbox"
+                        @change="toggleInList(store.controls.filters.categories, category)"
+                      />
+                      <span>{{ category }}</span>
+                    </label>
+                  </section>
+
+                  <section>
+                    <h3>Languages</h3>
+                    <label v-for="language in store.options.languages" :key="language" class="filter-check">
+                      <input
+                        :checked="store.controls.filters.languages.includes(language)"
+                        type="checkbox"
+                        @change="toggleInList(store.controls.filters.languages, language)"
+                      />
+                      <span>{{ language }}</span>
+                    </label>
+                  </section>
+
+                  <section>
+                    <h3>Product codes</h3>
+                    <div v-for="group in reposByProductCode" :key="group.productCode" class="filter-group-block">
+                      <label class="filter-check filter-check--group">
+                        <input
+                          :checked="store.controls.filters.productCodes.includes(group.productCode)"
+                          type="checkbox"
+                          @change="toggleInList(store.controls.filters.productCodes, group.productCode)"
+                        />
+                        <span>{{ group.productCode }}</span>
+                      </label>
+                      <div class="filter-group-block__actions">
+                        <button class="filter-link" type="button" @click="setRepoGroupSelection(group.repos.map((repo) => repo.id), true)">All</button>
+                        <button class="filter-link" type="button" @click="setRepoGroupSelection(group.repos.map((repo) => repo.id), false)">None</button>
+                      </div>
+                      <div class="filter-subgroup">
+                        <label v-for="repo in group.repos" :key="repo.id" class="filter-check filter-check--nested">
+                          <input
+                            :checked="store.controls.filters.repoIds.includes(repo.id)"
+                            type="checkbox"
+                            @change="toggleInList(store.controls.filters.repoIds, repo.id)"
+                          />
+                          <span>{{ repo.displayName }}</span>
+                        </label>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </aside>
+            </div>
+            <div ref="annotationTrigger" class="header-popover">
+              <button
+                class="button button--ghost"
+                :aria-expanded="annotationListOpen"
+                aria-haspopup="dialog"
+                data-testid="annotate-button"
+                type="button"
+                @click="toggleAnnotationPopover"
+              >
+                <PencilLine :size="14" />
+                <span v-if="toolbarTier !== 'micro'">Annotate</span>
+              </button>
+
+              <aside
+                v-if="annotationListOpen"
+                ref="annotationPopover"
+                class="popover-panel popover-panel--annotations"
+                data-testid="annotation-popover"
+              >
+                <div class="panel__header">
+                  <div>
+                    <p class="section-tag">Annotations</p>
+                    <h2>Story markers</h2>
+                  </div>
+                  <button class="button button--ghost" data-testid="annotation-new-button" type="button" @click="openAnnotationComposer()">New annotation</button>
+                </div>
+
+                <p class="popover-note">Use markers to label launches, incidents, and turning points directly on the timeline.</p>
+
+                <div v-if="store.loading.annotations" class="state state--compact">Loading annotations…</div>
+                <div v-else-if="!store.annotations.length" class="state state--compact">No annotations in the selected window.</div>
+                <ul v-else class="annotation-list annotation-list--compact" data-testid="annotation-list">
+                  <li v-for="annotation in store.annotations" :key="annotation.annotationId">
+                    <button class="annotation-pill" :data-testid="`annotation-pill-${annotation.annotationId}`" @click="selectAnnotation(annotation)">
+                      <span>{{ annotation.day }}</span>
+                      <strong>{{ annotation.title }}</strong>
+                      <small>{{ annotation.type }}</small>
+                    </button>
+                  </li>
+                </ul>
+              </aside>
             </div>
             <div v-if="showInlineChartMode" class="segmented">
               <button :class="{ active: store.chartMode === 'area' }" @click="setChartMode('area')">Area</button>
               <button :class="{ active: store.chartMode === 'line' }" @click="setChartMode('line')">Line</button>
             </div>
+            <button class="button button--ghost" data-testid="anonymize-toggle" type="button" @click="anonymizeAuthors = !anonymizeAuthors">
+              <EyeOff v-if="anonymizeAuthors" :size="14" />
+              <Eye v-else :size="14" />
+              <span v-if="toolbarTier !== 'micro'">{{ anonymizeAuthors ? 'Reveal' : 'Anonymize' }}</span>
+            </button>
             <div ref="dateTrigger" class="header-popover">
               <button class="button button--ghost" data-testid="date-controls-toggle" type="button" @click="toggleDatePopover">
                 <CalendarDays :size="14" />
@@ -1415,13 +1102,6 @@ async function exitChartFullscreen() {
                       <option v-for="option in groupByOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
                     </select>
                   </label>
-                  <div v-if="!showInlineLibrary" class="chart-controls-grid__row">
-                    <span class="chart-controls-grid__label">Library</span>
-                    <div class="segmented">
-                      <button :class="{ active: chartLibrary === 'echarts' }" @click="chartLibrary = 'echarts'">ECharts</button>
-                      <button :class="{ active: chartLibrary === 'chartjs' }" @click="chartLibrary = 'chartjs'">Chart.js</button>
-                    </div>
-                  </div>
                   <div v-if="!showInlineChartMode" class="chart-controls-grid__row">
                     <span class="chart-controls-grid__label">Display</span>
                     <div class="segmented">
@@ -1462,100 +1142,6 @@ async function exitChartFullscreen() {
         </div>
 
         <div class="chart-frame" data-testid="chart-area">
-          <div v-if="isChartFullscreen" class="chart-overlay-actions">
-            <div ref="chartControlsTrigger" class="header-popover">
-              <button class="button button--overlay" data-testid="chart-overlay-controls-toggle" type="button" @click="toggleChartControlsPopover">
-                <SlidersHorizontal :size="15" />
-              </button>
-              <aside
-                v-if="chartControlsOpen"
-                ref="chartControlsPopover"
-                class="popover-panel popover-panel--chart-controls"
-                data-testid="chart-overlay-controls-popover"
-              >
-                <div class="panel__header">
-                  <div>
-                    <p class="section-tag">Chart</p>
-                    <h2>Controls</h2>
-                  </div>
-                  <button class="button button--ghost" type="button" @click="chartControlsOpen = false">Done</button>
-                </div>
-                <div class="popover-panel__body chart-controls-grid">
-                  <label>
-                    Metric
-                    <select v-model="store.controls.metric" data-testid="metric-selector-fullscreen">
-                      <option v-for="option in metricOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                    </select>
-                  </label>
-                  <label>
-                    Group by
-                    <select v-model="store.controls.groupBy" data-testid="group-selector-fullscreen">
-                      <option v-for="option in groupByOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                    </select>
-                  </label>
-                  <label class="date-popover__preset">
-                    Range
-                    <select v-model="datePreset" data-testid="date-preset-fullscreen" @change="applyDatePreset">
-                      <option value="custom">Custom</option>
-                      <option v-for="preset in datePresetOptions" :key="preset.value" :value="preset.value">{{ preset.label }}</option>
-                    </select>
-                  </label>
-                  <label>
-                    From
-                    <input v-model="store.controls.dateRange.from" data-testid="date-from-fullscreen" type="date" @change="handleDateInputChange" />
-                  </label>
-                  <label>
-                    To
-                    <input v-model="store.controls.dateRange.to" data-testid="date-to-fullscreen" type="date" @change="handleDateInputChange" />
-                  </label>
-                  <label>
-                    Compare
-                    <select v-model="store.controls.comparisonMode">
-                      <option value="previous_equivalent_period">Previous equivalent period</option>
-                      <option value="same_period_last_year">Same period last year</option>
-                    </select>
-                  </label>
-                  <div class="chart-controls-grid__row">
-                    <span class="chart-controls-grid__label">Library</span>
-                    <div class="segmented">
-                      <button :class="{ active: chartLibrary === 'echarts' }" @click="chartLibrary = 'echarts'">ECharts</button>
-                      <button :class="{ active: chartLibrary === 'chartjs' }" @click="chartLibrary = 'chartjs'">Chart.js</button>
-                    </div>
-                  </div>
-                  <button class="button button--ghost" type="button" @click="toggleComparisonPopover">
-                    <BellRing :size="14" />
-                    Comparison summary
-                  </button>
-                  <div class="chart-controls-grid__row">
-                    <span class="chart-controls-grid__label">Display</span>
-                    <div class="segmented">
-                      <button :class="{ active: store.chartMode === 'area' }" @click="setChartMode('area')">Area</button>
-                      <button :class="{ active: store.chartMode === 'line' }" @click="setChartMode('line')">Line</button>
-                    </div>
-                  </div>
-                  <div class="chart-controls-grid__actions">
-                    <button class="button button--ghost" type="button" @click="store.comparisonOverlayVisible = !store.comparisonOverlayVisible">
-                      <Eye v-if="store.comparisonOverlayVisible" :size="14" />
-                      <EyeOff v-else :size="14" />
-                      {{ store.comparisonOverlayVisible ? 'Hide compare' : 'Show compare' }}
-                    </button>
-                    <button class="button button--ghost" type="button" @click="store.legendVisible = !store.legendVisible">
-                      <Eye v-if="store.legendVisible" :size="14" />
-                      <EyeOff v-else :size="14" />
-                      {{ store.legendVisible ? 'Hide legend' : 'Show legend' }}
-                    </button>
-                    <button class="button button--ghost" type="button" @click="toggleChartFullscreen">
-                      <Minimize2 :size="14" />
-                      Exit fullscreen
-                    </button>
-                  </div>
-                </div>
-              </aside>
-            </div>
-            <button class="button button--overlay" data-testid="chart-fullscreen-close" type="button" @click="toggleChartFullscreen">
-              <Minimize2 :size="15" />
-            </button>
-          </div>
           <div v-if="store.loading.bootstrap || store.loading.analytics" class="state state--loading" data-testid="chart-loading-state">
             <LoaderCircle class="spin" :size="22" />
             Loading dashboard data…
@@ -1632,54 +1218,6 @@ async function exitChartFullscreen() {
         <strong>{{ formatMetric(currentTotals?.fileCount) }}</strong>
       </article>
     </section>
-    <dialog
-      ref="configDialog"
-      class="dialog"
-      data-testid="config-dialog"
-      @cancel.prevent="closeConfigDialog"
-      @close="handleConfigDialogClose"
-    >
-      <form class="dialog__card dialog__card--editor" method="dialog" @submit.prevent="saveConfig">
-        <div class="panel__header">
-          <div>
-            <p class="section-tag">Config</p>
-            <h2>Edit dashboard config</h2>
-          </div>
-          <button class="button button--ghost" type="button" @click="closeConfigDialog">Close</button>
-        </div>
-
-        <div class="dialog__meta">
-          <span>File</span>
-          <code>{{ configPath || 'Loading config path…' }}</code>
-        </div>
-        <p class="dialog__hint">
-          Edit authors, repos, auth, syncWindow, and UI defaults directly. Saving updates the YAML file and requires a backend restart to take effect.
-        </p>
-
-        <div v-if="configLoading" class="state">Loading config…</div>
-        <label v-else class="dialog__editor">
-          Config YAML
-          <textarea
-            v-model="configYaml"
-            class="config-editor"
-            data-testid="config-editor"
-            rows="22"
-            spellcheck="false"
-          />
-        </label>
-
-        <p v-if="configError" class="dialog__feedback dialog__feedback--error">{{ configError }}</p>
-        <p v-else-if="configSaveNotice" class="dialog__feedback dialog__feedback--success">{{ configSaveNotice }}</p>
-
-        <div class="dialog__actions">
-          <button class="button button--ghost" :disabled="configLoading || configSaving" type="button" @click="loadConfigFile">Reload</button>
-          <button class="button button--primary" :disabled="configLoading || configSaving" data-testid="config-save" type="submit">
-            <LoaderCircle v-if="configSaving" class="spin" :size="16" />
-            <span>{{ configSaving ? 'Saving…' : 'Save config' }}</span>
-          </button>
-        </div>
-      </form>
-    </dialog>
     <dialog
       ref="annotationDialog"
       class="dialog"

@@ -8,11 +8,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.validation.annotation.Validated
 import java.time.LocalDate
 
+val supportedChartLibraries = setOf("echarts", "chartjs")
+
+fun requireSupportedChartLibrary(value: String, label: String) {
+    require(value in supportedChartLibraries) {
+        "$label must be one of ${supportedChartLibraries.joinToString(", ")}"
+    }
+}
+
 @Validated
 @ConfigurationProperties(prefix = "app")
 data class AppProperties(
     @field:NotBlank
-    val baseUrl: String = "http://localhost:8080",
+    val baseUrl: String = "http://localhost:8086",
     @field:NotBlank
     val dataDir: String = ".code-flux",
     val openBrowserOnStart: Boolean = true,
@@ -63,6 +71,8 @@ data class UiDefaultsProperties(
     val defaultMetric: String = "lines_added",
     @field:NotBlank
     val defaultGroupBy: String = "author",
+    @field:NotBlank
+    val defaultChartLibrary: String = "echarts",
     val defaultIncludeCategories: List<String> = listOf("production"),
     val defaultExcludeCategories: List<String> = listOf("test", "docs", "generated", "config"),
     val defaultDateFrom: LocalDate? = null,

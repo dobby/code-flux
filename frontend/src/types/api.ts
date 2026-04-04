@@ -1,4 +1,5 @@
 export type Metric = 'lines_added' | 'lines_removed' | 'net_lines' | 'commit_count' | 'file_count'
+export type ChartLibrary = 'echarts' | 'chartjs'
 
 export type GroupBy =
   | 'none'
@@ -49,6 +50,7 @@ export interface BootstrapResponse {
   uiDefaults: {
     defaultMetric: Metric
     defaultGroupBy: GroupBy
+    defaultChartLibrary: ChartLibrary
     defaultIncludeCategories: string[]
     defaultExcludeCategories: string[]
     defaultDateFrom: string | null

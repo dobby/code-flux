@@ -133,7 +133,7 @@ object GitFixtureSupport {
     fun createAppContext(project: GitTestProject, dataDir: Path, repoId: String = "fixture"): TestAppContext {
         val resolvedConfig = DashboardConfigFactory().resolvedDashboardConfig(
             appProperties = AppProperties(
-                baseUrl = "http://localhost:8080",
+                baseUrl = "http://localhost:8086",
                 dataDir = dataDir.toString(),
                 openBrowserOnStart = false,
                 logLevel = "INFO",

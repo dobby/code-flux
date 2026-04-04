@@ -5,6 +5,8 @@
 .playwright-mcp/
 knowledge-base/
 *.png
+!frontend/public/*.png
+!frontend/public/icons/*.png
 
 backend/.gradle/
 backend/build/
@@ -17,6 +19,11 @@ frontend/playwright-report/
 frontend/test-results/
 frontend/.vscode/
 frontend/.DS_Store
+
+desktop/node_modules/
+desktop/dist/
+desktop/resources/backend/
+desktop/resources/config/
 
 config/config.yaml
 

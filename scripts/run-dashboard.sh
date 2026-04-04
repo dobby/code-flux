@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JAR_PATH="$ROOT_DIR/backend/build/libs/code-flux-dashboard.jar"
-PORT="${SERVER_PORT:-8080}"
+PORT="${SERVER_PORT:-8086}"
 DEFAULT_CONFIG_PATH="$ROOT_DIR/config/config.yaml"
 
 if [[ ! -f "$JAR_PATH" ]]; then

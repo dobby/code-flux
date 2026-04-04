@@ -6,7 +6,7 @@ Code Flux is a local engineering analytics dashboard for Git repositories. It in
 
 - Backend: Kotlin, Spring Boot, Flyway, SQLite
 - Frontend: Vue 3, Pinia, Vite, ECharts, Chart.js
-- Packaging: Spring Boot serves the built frontend
+- Packaging: Spring Boot serves the built frontend, with an Electron wrapper for macOS distribution
 
 ## Features
 
@@ -24,6 +24,7 @@ Code Flux is a local engineering analytics dashboard for Git repositories. It in
 
 ```text
 backend/   Spring Boot API, sync engine, persistence, tests
+desktop/   Electron wrapper, packaging config, app resources
 frontend/  Vue app, charts, state, UI tests
 config/    Sample configuration
 scripts/   Dev, build, and run helpers
@@ -34,6 +35,7 @@ scripts/   Dev, build, and run helpers
 - Java 21+
 - Node.js + npm
 - Git
+- GraalVM JDK 21+ with `native-image` for native backend and macOS app packaging
 
 ## Configuration
 
@@ -51,6 +53,20 @@ Start the frontend and backend in development mode:
 ./scripts/dev.sh
 ```
 
+Open the same dev stack in an app-style Chromium window:
+
+```bash
+./scripts/dev-app.sh
+```
+
+`./scripts/dev-app.sh` looks for Google Chrome, Microsoft Edge, or Brave on macOS and launches Code Flux in standalone app mode.
+
+Open the dev stack in Electron instead of Chromium app mode:
+
+```bash
+./scripts/dev-electron.sh
+```
+
 ## Build
 
 Build the frontend and package the backend jar:
@@ -58,6 +74,26 @@ Build the frontend and package the backend jar:
 ```bash
 ./scripts/build-release.sh
 ```
+
+Build the frontend, the backend jar, and the GraalVM native executable used by the Electron wrapper:
+
+```bash
+./scripts/build-native-backend.sh
+```
+
+Build the installable macOS Electron app and DMG using the native backend:
+
+```bash
+./scripts/build-mac-app.sh
+```
+
+Build the Electron wrapper in jar fallback mode instead of native mode:
+
+```bash
+CODE_FLUX_ELECTRON_BACKEND_MODE=jar ./scripts/build-mac-app.sh
+```
+
+The jar fallback keeps the packaging flow available during native rollout, but it still requires Java 21+ on the target machine.
 
 ## Run
 
@@ -67,10 +103,18 @@ Run the packaged dashboard with an explicit config file:
 APP_CONFIG_FILE="$PWD/config/config.yaml" ./scripts/run-dashboard.sh
 ```
 
-You can override the backend port if needed:
+The scripts default to backend port `8086` to avoid conflicts with local projects.
+
+You can still override the backend port if needed:
 
 ```bash
 SERVER_PORT=8086 APP_CONFIG_FILE="$PWD/config/config.yaml" ./scripts/run-dashboard.sh
+```
+
+For the packaged Electron app, user config and app data live under:
+
+```text
+~/Library/Application Support/Code Flux
 ```
 
 ## Verification
@@ -80,6 +124,12 @@ Backend tests:
 ```bash
 cd backend
 ./gradlew test
+```
+
+Backend native image build:
+
+```bash
+./scripts/build-native-backend.sh
 ```
 
 Frontend production build:

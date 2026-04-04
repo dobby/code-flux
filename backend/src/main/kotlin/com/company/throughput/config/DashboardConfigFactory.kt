@@ -100,6 +100,10 @@ class DashboardConfigFactory {
             to = uiDefaultsProperties.defaultDateTo,
             label = "uiDefaults default date range",
         )
+        requireSupportedChartLibrary(
+            value = uiDefaultsProperties.defaultChartLibrary,
+            label = "uiDefaults.defaultChartLibrary",
+        )
 
         return ResolvedDashboardConfig(
             app = appProperties.copy(dataDir = dataDir.toString()),

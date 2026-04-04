@@ -1,0 +1,50 @@
+{
+  "name": "code-flux-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Electron distribution wrapper for Code Flux",
+  "author": "Eli Willaert",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "package": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^36.4.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.codeflux.desktop",
+    "productName": "Code Flux",
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "artifactName": "Code-Flux-${arch}.${ext}",
+      "icon": "assets/icon.icns",
+      "target": [
+        "dir",
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "artifactName": "Code-Flux-${arch}.${ext}"
+    }
+  }
+}

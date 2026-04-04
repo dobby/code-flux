@@ -1,5 +1,5 @@
 app:
-  baseUrl: "http://localhost:8080"
+  baseUrl: "http://localhost:8086"
   dataDir: "/tmp/code-flux"
   openBrowserOnStart: false
   logLevel: "INFO"
@@ -83,6 +83,7 @@ classification:
 uiDefaults:
   defaultMetric: "lines_added"
   defaultGroupBy: "author"
+  defaultChartLibrary: "echarts"
   defaultDateFrom: "2025-01-01"
   defaultIncludeCategories:
     - "production"

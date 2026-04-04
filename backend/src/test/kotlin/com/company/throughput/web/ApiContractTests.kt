@@ -85,6 +85,7 @@ class ApiContractTests(
             .andExpect(jsonPath("$.repos[?(@.id == 'marcando-api')]").isNotEmpty)
             .andExpect(jsonPath("$.authors[?(@.id == 'eli')]").isNotEmpty)
             .andExpect(jsonPath("$.lastSuccessfulSyncAt").value("2026-03-02T10:15:00Z"))
+            .andExpect(jsonPath("$.uiDefaults.defaultChartLibrary").value("echarts"))
             .andExpect(jsonPath("$.uiDefaults.defaultDateFrom").value("2025-01-01"))
     }
 

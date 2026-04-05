@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "telegram": {
+      "source": "skillhq/telegram",
+      "sourceType": "github",
+      "computedHash": "2ca0216bdde7778e4755cbb5b0f8c0bd5f5949c87b70fe51813c653fd95d9cf6"
+    }
+  }
+}

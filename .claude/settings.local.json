@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/eli/bin/**)",
+      "Read(//Users/eli/**)",
+      "Bash(find / -name telegram -type f)"
+    ]
+  }
+}

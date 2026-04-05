@@ -65,6 +65,78 @@ export interface ConfigFileResponse {
   savedAt: string | null
 }
 
+export interface ConfigRepo {
+  id: string
+  displayName: string
+  cloneUrl: string
+  enabled: boolean
+  productCode: string | null
+  branchPatterns: string[]
+  excludeBranchPatterns: string[]
+  excludePathGlobs: string[]
+}
+
+export interface ConfigAuthor {
+  id: string
+  displayName: string
+  emails: string[]
+  names: string[]
+  cohort: string | null
+}
+
+export interface ConfigClassificationRule {
+  id: string
+  whenPathMatches: string[]
+  category: string
+  subtype: string
+}
+
+export interface EditableDashboardConfig {
+  app: {
+    baseUrl: string
+    dataDir: string
+    openBrowserOnStart: boolean
+    logLevel: string
+  }
+  git: {
+    executable: string
+    mirrorDir: string | null
+    timeoutSeconds: number
+    includeMergeCommits: boolean
+    deduplicateByPatchId: boolean
+    useAuthoredDate: boolean
+    auth: {
+      httpUsername: string | null
+      httpToken: string | null
+    }
+  }
+  repos: ConfigRepo[]
+  authors: {
+    include: ConfigAuthor[]
+  }
+  classification: {
+    languageByExtension: Record<string, string>
+    rules: ConfigClassificationRule[]
+  }
+  uiDefaults: {
+    defaultMetric: Metric
+    defaultGroupBy: GroupBy
+    defaultChartLibrary: ChartLibrary
+    defaultIncludeCategories: string[]
+    defaultExcludeCategories: string[]
+    defaultDateFrom: string | null
+    defaultDateTo: string | null
+  }
+  syncWindow: {
+    from: string | null
+    to: string | null
+  }
+}
+
+export interface ConfigBuilderResponse extends ConfigFileResponse {
+  config: EditableDashboardConfig
+}
+
 export interface SyncRepoStatus {
   repoId: string
   status: 'SUCCESS' | 'FAILED' | 'RUNNING' | string

@@ -16,6 +16,13 @@
 - Treat `config/config.yaml` as private/local and do not commit it.
 - Use `config/config.example.yaml` as the public template.
 
+## Status Updates
+
+- After any major completion or verification stage, send a brief Telegram status update to the `Code Flux` Telegram group using the configured `telegram` CLI.
+- Keep Telegram updates concise and practical: what was completed, whether verification passed or failed, and any blocker that needs input.
+- If visual work is involved and screenshots are available, send the screenshot or screenshot path via Telegram as part of the status update so the user can give visual feedback.
+- Treat Telegram status updates as supplementary progress reporting, not a replacement for local summaries in the terminal.
+
 ## Desktop App (Electron)
 
 ### Build Paths

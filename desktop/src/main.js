@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron')
 const { spawn, spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -20,6 +20,7 @@ let quittingForShutdown = false
 let startupLogPath = null
 let currentTargetUrl = null
 let backendReady = false
+const JIRA_SECRET_NAME = 'jira-token.bin'
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -63,6 +64,7 @@ app.on('before-quit', (event) => {
 })
 
 app.whenReady().then(async () => {
+  installSecureIpc()
   await bootstrapApplication()
 })
 
@@ -70,6 +72,7 @@ async function bootstrapApplication() {
   try {
     const launchTarget = currentTargetUrl ?? (await resolveLaunchTarget())
     currentTargetUrl = launchTarget
+    await hydrateStoredSecrets()
     createWindow(launchTarget)
   } catch (error) {
     await stopBackend()
@@ -80,6 +83,16 @@ async function bootstrapApplication() {
     dialog.showErrorBox(PRODUCT_NAME, message)
     app.exit(1)
   }
+}
+
+function installSecureIpc() {
+  ipcMain.handle('jira-secret-save', async (_event, token) => {
+    if (typeof token !== 'string' || token.trim().length === 0) {
+      throw new Error('Token is required')
+    }
+    storeSecret(JIRA_SECRET_NAME, token.trim())
+    await postToLocalApi('/api/v2/settings/jira/secret', { token: token.trim() })
+  })
 }
 
 function createWindow(targetUrl) {
@@ -197,6 +210,14 @@ async function resolveLaunchTarget() {
   return appBaseUrl
 }
 
+async function hydrateStoredSecrets() {
+  const token = readSecret(JIRA_SECRET_NAME)
+  if (!token) {
+    return
+  }
+  await postToLocalApi('/api/v2/settings/jira/secret', { token })
+}
+
 function resolveResourcesDir() {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'resources')
@@ -249,6 +270,53 @@ async function startBackend({ resourcesDir, port, appBaseUrl, configPath, dataDi
 
   await waitForHealth(appBaseUrl)
   backendReady = true
+}
+
+function secretPath(name) {
+  const secretsDir = path.join(app.getPath('userData'), 'secrets')
+  fs.mkdirSync(secretsDir, { recursive: true })
+  return path.join(secretsDir, name)
+}
+
+function storeSecret(name, value) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Desktop encryption is unavailable on this machine.')
+  }
+  const encrypted = safeStorage.encryptString(value)
+  fs.writeFileSync(secretPath(name), encrypted)
+}
+
+function readSecret(name) {
+  const filePath = secretPath(name)
+  if (!fs.existsSync(filePath)) {
+    return null
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    return null
+  }
+  const encrypted = fs.readFileSync(filePath)
+  return safeStorage.decryptString(encrypted)
+}
+
+async function postToLocalApi(pathname, payload) {
+  if (!currentTargetUrl) {
+    return
+  }
+
+  const target = new URL(pathname, currentTargetUrl).toString()
+  const response = await fetch(target, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText)
+    throw new Error(`Secret handoff failed: ${response.status} ${detail}`)
+  }
 }
 
 function detectBackendMode(resourcesDir) {

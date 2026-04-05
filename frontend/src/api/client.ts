@@ -5,7 +5,9 @@ import type {
   AnalyticsQueryResponse,
   Annotation,
   BootstrapResponse,
+  ConfigBuilderResponse,
   ConfigFileResponse,
+  EditableDashboardConfig,
   CreateAnnotationRequest,
   FilterOptionsResponse,
   SyncStatusResponse,
@@ -47,10 +49,21 @@ export function getConfigFile() {
   return request<ConfigFileResponse>('/api/config')
 }
 
+export function getConfigBuilder() {
+  return request<ConfigBuilderResponse>('/api/config/builder')
+}
+
 export function updateConfigFile(yaml: string) {
   return request<ConfigFileResponse>('/api/config', {
     method: 'PUT',
     body: JSON.stringify({ yaml }),
+  })
+}
+
+export function updateConfigBuilder(config: EditableDashboardConfig) {
+  return request<ConfigBuilderResponse>('/api/config/builder', {
+    method: 'PUT',
+    body: JSON.stringify(config),
   })
 }
 

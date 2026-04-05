@@ -56,3 +56,6 @@ config/     config.example.yaml (template — config.yaml is gitignored)
 - Config: `config/config.yaml` is local/private, never committed. Use `config/config.example.yaml` as the public template.
 - Default backend port: `8086` (override with `SERVER_PORT` env var)
 - Frontend proxies API calls to backend via Vite config in dev mode
+- After major completions or verification stages, send a short Telegram update to the `Code Flux` Telegram group with the configured `telegram` CLI.
+- Telegram updates should include milestone status, verification outcome, and blockers if any.
+- When visual changes are reviewed with screenshots, send those screenshots or their paths through Telegram as well so the user can provide visual feedback.

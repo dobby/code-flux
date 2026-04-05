@@ -1,362 +1,301 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
-  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  LayoutGrid,
   LoaderCircle,
-  Moon,
+  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   RefreshCcw,
   Settings2,
-  Square,
-  Sun,
 } from 'lucide-vue-next'
-import { getConfigFile, updateConfigFile } from './api/client'
 import { useShellChrome } from './composables/useShellChrome'
-import { useTheme } from './composables/useTheme'
+import { useWorkspaceStore } from './stores/workspace'
 import { useDashboardStore } from './stores/dashboard'
+import DrilldownDrawer from './components/DrilldownDrawer.vue'
 
-const store = useDashboardStore()
-const { isDark, toggleTheme } = useTheme()
-const { isElectron } = useShellChrome()
 const route = useRoute()
+const router = useRouter()
+const workspace = useWorkspaceStore()
+const dashboard = useDashboardStore()
+useShellChrome()
 
-const configDialog = ref<HTMLDialogElement | null>(null)
-const configDialogOpen = ref(false)
 const sidebarCollapsed = ref(false)
-const configYaml = ref('')
-const configPath = ref('')
-const configLoading = ref(false)
-const configSaving = ref(false)
-const configError = ref<string | null>(null)
-const configSaveNotice = ref<string | null>(null)
+const expandedSidebarWidth = ref(280)
 
-const lastSyncText = computed(() => {
-  if (store.syncStatus?.running && store.syncStatus.lastRun?.finishedAt == null && store.syncStatus.lastRun?.startedAt) {
-    return new Date(store.syncStatus.lastRun.startedAt).toLocaleString()
-  }
-  const raw = store.syncStatus?.lastRun?.finishedAt ?? store.bootstrap?.lastSuccessfulSyncAt
-  if (!raw) {
-    return 'No successful sync yet'
-  }
-  return new Date(raw).toLocaleString()
-})
-
-const lastSyncLabel = computed(() => (
-  store.syncStatus?.running && store.syncStatus.lastRun?.finishedAt == null
-    ? 'Current run started'
-    : 'Last finished sync'
+const currentPage = computed(() => (
+  workspace.pages.find((page) => page.id === route.params.pageId) ?? null
 ))
 
-const lastRunStatusText = computed(() => store.syncStatus?.lastRun?.status ?? 'IDLE')
-const themeToggleLabel = computed(() => (isDark.value ? 'Light mode' : 'Dark mode'))
-const syncActionLabel = computed(() => {
-  if (store.currentSync?.stopRequested) {
-    return 'Stopping…'
-  }
-  if (store.syncStatus?.running) {
-    return 'Stop Sync'
-  }
-  return store.loading.sync ? 'Starting…' : 'Run Sync'
-})
-const syncActionTone = computed(() => (store.syncStatus?.running ? 'button--danger' : 'button--primary'))
-const configChartLibraryHint = computed(() => store.bootstrap?.uiDefaults.defaultChartLibrary ?? 'echarts')
-const activeScreenLabel = computed(() => {
-  if (route.name === 'dashboard') {
-    return 'Dashboard'
-  }
+const isSettingsRoute = computed(() => (
+  route.name === 'settings-general' || route.name === 'settings-jira'
+))
 
-  const raw = typeof route.name === 'string' ? route.name : 'Code Flux'
-  return raw.charAt(0).toUpperCase() + raw.slice(1)
+const shellStyle = computed(() => {
+  if (sidebarCollapsed.value) return {}
+  return { '--cf-sidebar-width': `${expandedSidebarWidth.value}px` }
 })
 
-watch(
-  () => configDialogOpen.value,
-  async (isOpen) => {
-    await nextTick()
-    const dialog = configDialog.value
-    if (!dialog) {
-      return
-    }
-
-    if (isOpen) {
-      if (!dialog.open) {
-        dialog.showModal()
-      }
-      return
-    }
-
-    if (dialog.open) {
-      dialog.close()
-    }
-  },
-)
-
-function handleConfigDialogClose() {
-  if (configDialogOpen.value) {
-    configDialogOpen.value = false
+const currentSectionLabel = computed(() => {
+  switch (route.name) {
+    case 'settings-general': return 'General'
+    case 'settings-jira': return 'Jira'
+    case 'sync': return 'Sync'
+    case 'legacy-overview': return 'Legacy Overview'
+    case 'widgets':
+    case 'widget-new':
+    case 'widget-edit': return 'Widget Catalog'
+    default: return currentPage.value?.title ?? 'Code Flux'
   }
-}
+})
 
-function closeConfigDialog() {
-  configDialogOpen.value = false
+const syncProgressPercent = computed(() => dashboard.syncProgressPercent ?? 0)
+const RING_C = 44
+const syncRingOffset = computed(() => RING_C - (RING_C * syncProgressPercent.value / 100))
+
+async function initialize() {
+  await Promise.all([workspace.initialize(), dashboard.initialize()])
+  await workspace.loadWidgetCatalog()
 }
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
-  window.localStorage.setItem('code-flux-sidebar-collapsed', String(sidebarCollapsed.value))
+  window.localStorage.setItem('code-flux-v2-sidebar-collapsed', String(sidebarCollapsed.value))
 }
 
-async function handleSyncAction() {
-  if (store.syncStatus?.running) {
-    await store.stopRunningSync()
-    return
+function beginSidebarResize(event: MouseEvent) {
+  const startX = event.clientX
+  const startWidth = expandedSidebarWidth.value
+
+  const handleMove = (e: MouseEvent) => {
+    expandedSidebarWidth.value = Math.max(220, Math.min(400, startWidth + (e.clientX - startX)))
   }
-
-  await store.triggerSync()
-}
-
-async function openConfigDialogPanel() {
-  store.annotationDialogOpen = false
-  configDialogOpen.value = true
-  configSaveNotice.value = null
-  await loadConfigFile()
-}
-
-async function loadConfigFile() {
-  configLoading.value = true
-  configError.value = null
-
-  try {
-    const response = await getConfigFile()
-    configYaml.value = response.yaml
-    configPath.value = response.path
-  } catch (caught) {
-    configError.value = toMessage(caught)
-  } finally {
-    configLoading.value = false
+  const handleUp = () => {
+    window.localStorage.setItem('code-flux-v2-sidebar-width', String(expandedSidebarWidth.value))
+    window.removeEventListener('mousemove', handleMove)
+    window.removeEventListener('mouseup', handleUp)
   }
+  window.addEventListener('mousemove', handleMove)
+  window.addEventListener('mouseup', handleUp, { once: true })
 }
 
-async function saveConfig() {
-  configSaving.value = true
-  configError.value = null
-  configSaveNotice.value = null
+async function createPagePrompt() {
+  const title = window.prompt('Page title')
+  if (!title?.trim()) return
+  await workspace.createPageAndRefresh({ title: title.trim() })
+  const page = workspace.orderedPages.at(-1)
+  if (page) await router.push({ name: 'page', params: { pageId: page.id } })
+}
 
-  try {
-    const response = await updateConfigFile(configYaml.value)
-    configPath.value = response.path
-    configSaveNotice.value = response.restartRequired
-      ? 'Config saved. Restart the dashboard to apply backend changes.'
-      : 'Config saved.'
-  } catch (caught) {
-    configError.value = toMessage(caught)
-  } finally {
-    configSaving.value = false
+async function renamePagePrompt(pageId: string, currentTitle: string) {
+  const title = window.prompt('Rename page', currentTitle)
+  if (!title?.trim()) return
+  await workspace.renamePage(pageId, title.trim())
+}
+
+async function archivePagePrompt(pageId: string) {
+  if (!window.confirm('Archive this page?')) return
+  await workspace.archivePageAndRefresh(pageId)
+  if (route.name === 'page' && route.params.pageId === pageId) {
+    const next = workspace.orderedPages[0]
+    await router.push(next ? { name: 'page', params: { pageId: next.id } } : { name: 'widgets' })
   }
 }
 
-function toMessage(caught: unknown): string {
-  return caught instanceof Error ? caught.message : 'Unexpected dashboard error'
+async function duplicatePageAndOpen(pageId: string) {
+  const page = await workspace.duplicatePageAndRefresh(pageId)
+  await router.push({ name: 'page', params: { pageId: page.id } })
+}
+
+function openPageMenu(pageId: string, pageTitle: string) {
+  const action = window.prompt(`Page: ${pageTitle}\nType: rename, duplicate, archive`)
+  if (action === 'rename') void renamePagePrompt(pageId, pageTitle)
+  else if (action === 'duplicate') void duplicatePageAndOpen(pageId)
+  else if (action === 'archive') void archivePagePrompt(pageId)
+}
+
+function navigateToSettings() {
+  void router.push({ name: 'settings-general' })
 }
 
 onMounted(() => {
-  sidebarCollapsed.value = window.localStorage.getItem('code-flux-sidebar-collapsed') === 'true'
-  void store.initialize()
+  sidebarCollapsed.value = window.localStorage.getItem('code-flux-v2-sidebar-collapsed') === 'true'
+  const stored = Number(window.localStorage.getItem('code-flux-v2-sidebar-width') ?? '')
+  if (Number.isFinite(stored) && stored >= 220 && stored <= 400) expandedSidebarWidth.value = stored
+  void initialize()
 })
 </script>
 
 <template>
-  <div
-    class="app-shell"
-    :class="{ 'app-shell--collapsed': sidebarCollapsed }"
-  >
-    <aside class="sidebar-surface" data-testid="app-sidebar">
-      <div class="sidebar-chrome" aria-hidden="true" />
-      <div class="sidebar-body" :class="{ 'app-sidebar--collapsed': sidebarCollapsed }">
-        <div class="app-sidebar__top">
-          <div class="app-sidebar__masthead">
-            <RouterLink class="app-brand" to="/">
-              <img alt="" class="app-brand__icon" src="/icons/icon-192.png" />
-              <div class="app-brand__copy">
-                <span class="app-brand__eyebrow">Flow telemetry</span>
-                <strong>Code Flux</strong>
-              </div>
-            </RouterLink>
+  <div class="app-shell" :class="{ 'app-shell--collapsed': sidebarCollapsed }" :style="shellStyle">
+    <!-- Sidebar (hidden when collapsed) -->
+    <aside class="sidebar" data-testid="app-sidebar">
+      <!-- Toolbar: TL gap + collapse + back + forward -->
+      <div class="sidebar-toolbar" aria-hidden="true">
+        <div class="sidebar-tl-gap" />
+        <button
+          class="sidebar-toolbar-btn"
+          :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+          data-testid="sidebar-toggle"
+          type="button"
+          @click="toggleSidebar"
+        >
+          <PanelLeftClose :size="15" />
+        </button>
+        <button class="sidebar-toolbar-btn" aria-label="Go back" type="button" @click="router.back()">
+          <ChevronLeft :size="15" />
+        </button>
+        <button class="sidebar-toolbar-btn" aria-label="Go forward" type="button" @click="router.forward()">
+          <ChevronRight :size="15" />
+        </button>
+      </div>
+
+      <!-- Scrollable content -->
+      <div class="sidebar-content">
+        <!-- Settings nav swap -->
+        <template v-if="isSettingsRoute">
+          <nav class="sidebar-menu">
+            <button class="sidebar-item" type="button" @click="router.back()">
+              <ChevronLeft class="sidebar-icon" :size="15" />
+              <span class="sidebar-item__label">Back to app</span>
+            </button>
+          </nav>
+          <div class="sidebar-section-row">
+            <span class="sidebar-section-label">Settings</span>
           </div>
+          <nav class="sidebar-menu">
+            <RouterLink class="sidebar-item" :to="{ name: 'settings-general' }">
+              <Settings2 class="sidebar-icon" :size="15" />
+              <span class="sidebar-item__label">General</span>
+            </RouterLink>
+            <RouterLink class="sidebar-item" :to="{ name: 'settings-jira' }">
+              <LayoutGrid class="sidebar-icon" :size="15" />
+              <span class="sidebar-item__label">Jira</span>
+            </RouterLink>
+          </nav>
+        </template>
 
-          <section class="app-sidebar__intro">
-            <p class="section-tag">Workspace</p>
-            <strong class="app-sidebar__intro-title">{{ activeScreenLabel }}</strong>
-            <p class="app-sidebar__intro-copy">
-              Local telemetry shell for your development dataset, with sync and settings kept in the rail.
-            </p>
-          </section>
-
-          <nav class="app-nav app-nav--primary" aria-label="Primary">
-            <p class="app-sidebar__section-label">Views</p>
-            <RouterLink class="app-nav__link" data-testid="sidebar-nav-dashboard" to="/">
-              <BarChart3 :size="18" />
-              <span class="app-nav__copy">
-                <strong>Dashboard</strong>
-                <small>Telemetry overview</small>
+        <!-- Primary nav -->
+        <template v-else>
+          <nav class="sidebar-menu">
+            <RouterLink
+              class="sidebar-item"
+              :class="{ 'sidebar-item--active': route.name === 'sync' }"
+              :to="{ name: 'sync' }"
+              data-testid="nav-sync"
+            >
+              <span class="sidebar-icon">
+                <svg v-if="dashboard.syncStatus?.running" class="sync-ring" width="15" height="15" viewBox="0 0 18 18">
+                  <circle class="sync-ring__track" cx="9" cy="9" r="7" />
+                  <circle class="sync-ring__fill" cx="9" cy="9" r="7" :style="{ strokeDashoffset: syncRingOffset }" />
+                </svg>
+                <RefreshCcw v-else :size="15" />
               </span>
+              <span class="sidebar-item__label">Sync</span>
+              <span v-if="dashboard.syncStatus?.running" class="sync-status-badge sync-status-badge--live">
+                {{ syncProgressPercent }}%
+              </span>
+            </RouterLink>
+
+            <RouterLink
+              class="sidebar-item"
+              :class="{ 'sidebar-item--active': route.name === 'widgets' || route.name === 'widget-new' || route.name === 'widget-edit' }"
+              :to="{ name: 'widgets' }"
+              data-testid="nav-widgets"
+            >
+              <LayoutGrid class="sidebar-icon" :size="15" />
+              <span class="sidebar-item__label">Widget Catalog</span>
             </RouterLink>
           </nav>
 
-          <section class="app-sidebar__section">
-            <div class="app-sidebar__section-head">
-              <div class="app-sidebar__section-copy">
-                <p class="section-tag">Sync</p>
-                <strong class="app-sidebar__section-title">
-                  {{ store.syncStatus?.running ? 'Sync in progress' : 'Ready to refresh' }}
-                </strong>
-              </div>
-              <span class="sync-status-badge" :class="{ 'sync-status-badge--live': store.syncStatus?.running }">
-                {{ store.syncStatus?.running ? 'Live' : lastRunStatusText }}
-              </span>
-            </div>
-
-            <div class="app-sidebar__meta">
-              <span class="app-sidebar__meta-label">{{ lastSyncLabel }}</span>
-              <strong>{{ lastSyncText }}</strong>
-              <p>
-                <template v-if="store.currentSync && store.syncProgressLabel">{{ store.syncProgressLabel }}</template>
-                <template v-else-if="store.syncStatus?.lastRun?.message">{{ store.syncStatus.lastRun.message }}</template>
-                <template v-else>Use the local config from your dev setup and run sync on demand.</template>
-              </p>
-            </div>
-
-            <div v-if="store.currentSync" class="app-sidebar__progress">
-              <div class="sync-progress-card__head">
-                <span>{{ store.currentSync.stage }}</span>
-                <strong>{{ store.syncProgressPercent }}%</strong>
-              </div>
-              <div class="sync-progress-bar" aria-hidden="true">
-                <div class="sync-progress-bar__fill" :style="{ width: `${store.syncProgressPercent}%` }" />
-              </div>
-              <p class="popover-note">
-                {{ store.syncProgressLabel }}
-                <template v-if="store.syncCurrentRepoLabel">
-                  · Now at {{ store.syncCurrentRepoLabel }}
-                </template>
-              </p>
-              <p v-if="store.currentSync.stopRequested" class="dialog__feedback dialog__feedback--error">
-                Stop requested. The worker will stop after the current repository finishes.
-              </p>
-            </div>
-
-            <button
-              class="button app-sidebar__action"
-              :class="syncActionTone"
-              data-testid="sync-button"
-              :disabled="store.currentSync?.stopRequested"
-              type="button"
-              @click="handleSyncAction"
-            >
-              <LoaderCircle v-if="store.currentSync?.stopRequested" class="spin" :size="16" />
-              <Square v-else-if="store.syncStatus?.running" :size="15" />
-              <RefreshCcw v-else :size="16" />
-              <span>{{ syncActionLabel }}</span>
+          <!-- Pages section -->
+          <div class="sidebar-section-row">
+            <span class="sidebar-section-label">Pages</span>
+            <button class="sidebar-section-btn" data-testid="sidebar-create-page" title="New page" type="button" @click="createPagePrompt">
+              <Plus :size="12" />
             </button>
-          </section>
-        </div>
-
-        <div class="app-sidebar__bottom">
-          <button class="button button--ghost app-nav__link app-nav__link--button" data-testid="theme-toggle" type="button" @click="toggleTheme()">
-            <Sun v-if="isDark" :size="18" />
-            <Moon v-else :size="18" />
-            <span>{{ themeToggleLabel }}</span>
-          </button>
-
-          <button
-            class="button button--ghost app-nav__link app-nav__link--button"
-            data-testid="sidebar-settings-toggle"
-            type="button"
-            @click="openConfigDialogPanel"
-          >
-            <Settings2 :size="18" />
-            <span>Settings</span>
-          </button>
-        </div>
+          </div>
+          <div class="sidebar-pages">
+            <RouterLink
+              v-for="page in workspace.orderedPages"
+              :key="page.id"
+              class="sidebar-item"
+              :class="{ 'sidebar-item--active': route.name === 'page' && route.params.pageId === page.id }"
+              :data-testid="`sidebar-page-link-${page.id}`"
+              :to="{ name: 'page', params: { pageId: page.id } }"
+            >
+              <FileText class="sidebar-icon" :size="14" />
+              <span class="sidebar-item__label">{{ page.title }}</span>
+              <button
+                class="sidebar-item__more"
+                :data-testid="`page-menu-${page.id}`"
+                title="Page options"
+                type="button"
+                @click.prevent="openPageMenu(page.id, page.title)"
+              >
+                <MoreHorizontal :size="13" />
+              </button>
+            </RouterLink>
+          </div>
+        </template>
       </div>
+
+      <!-- Bottom: Settings only -->
+      <div class="sidebar-bottom">
+        <nav class="sidebar-menu">
+          <button
+            class="sidebar-item"
+            :class="{ 'sidebar-item--active': isSettingsRoute }"
+            type="button"
+            @click="navigateToSettings"
+          >
+            <Settings2 class="sidebar-icon" :size="15" />
+            <span class="sidebar-item__label">Settings</span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="sidebar-resize-handle" @mousedown.prevent="beginSidebarResize" />
     </aside>
 
-    <div class="toggle-anchor">
-      <button
-        class="sidebar-toggle"
-        :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        data-testid="sidebar-toggle"
-        type="button"
-        @click="toggleSidebar"
-      >
-        <PanelLeftClose v-if="!sidebarCollapsed" :size="16" />
-        <PanelLeftOpen v-else :size="16" />
-      </button>
-    </div>
-
-    <header class="main-chrome">
-      <span class="main-chrome__title">{{ activeScreenLabel }}</span>
-      <div class="main-chrome__spacer" />
-    </header>
-
-    <div class="main-body">
-      <div class="main-body__content">
+    <!-- Floating content pane -->
+    <main class="content-pane">
+      <header class="content-chrome" data-testid="app-header">
+        <!-- When sidebar is collapsed: TL gap + nav buttons appear left of title -->
+        <template v-if="sidebarCollapsed">
+          <div class="content-chrome__tl-gap" aria-hidden="true" />
+          <button
+            class="content-chrome__btn"
+            aria-label="Expand sidebar"
+            data-testid="sidebar-toggle"
+            type="button"
+            @click="toggleSidebar"
+          >
+            <PanelLeftOpen :size="15" />
+          </button>
+          <button class="content-chrome__btn" aria-label="Go back" type="button" @click="router.back()">
+            <ChevronLeft :size="15" />
+          </button>
+          <button class="content-chrome__btn" aria-label="Go forward" type="button" @click="router.forward()">
+            <ChevronRight :size="15" />
+          </button>
+        </template>
+        <span class="content-chrome__title">{{ currentSectionLabel }}</span>
+        <div class="content-chrome__spacer" />
+        <div class="content-chrome__actions">
+          <LoaderCircle v-if="dashboard.syncStatus?.running" class="spin" :size="14" style="color: var(--cf-accent)" />
+        </div>
+      </header>
+      <div class="content-body">
         <RouterView />
       </div>
-    </div>
+    </main>
 
-    <dialog
-      ref="configDialog"
-      class="dialog"
-      data-testid="config-dialog"
-      @cancel.prevent="closeConfigDialog"
-      @close="handleConfigDialogClose"
-    >
-      <form class="dialog__card dialog__card--editor" method="dialog" @submit.prevent="saveConfig">
-        <div class="panel__header">
-          <div>
-            <p class="section-tag">Config</p>
-            <h2>Edit dashboard config</h2>
-          </div>
-          <button class="button button--ghost" type="button" @click="closeConfigDialog">Close</button>
-        </div>
-
-        <div class="dialog__meta">
-          <span>File</span>
-          <code>{{ configPath || 'Loading config path…' }}</code>
-        </div>
-        <p class="dialog__hint">
-          This editor controls repositories, authors, UI defaults, and chart library. Set
-          <code>uiDefaults.defaultChartLibrary</code>
-          to <code>echarts</code> or <code>chartjs</code>. Current default:
-          <strong>{{ configChartLibraryHint }}</strong>.
-        </p>
-
-        <div v-if="configLoading" class="state">Loading config…</div>
-        <label v-else class="dialog__editor">
-          Config YAML
-          <textarea
-            v-model="configYaml"
-            class="config-editor"
-            data-testid="config-editor"
-            rows="22"
-            spellcheck="false"
-          />
-        </label>
-
-        <p v-if="configError" class="dialog__feedback dialog__feedback--error">{{ configError }}</p>
-        <p v-else-if="configSaveNotice" class="dialog__feedback dialog__feedback--success">{{ configSaveNotice }}</p>
-
-        <div class="dialog__actions">
-          <button class="button button--ghost" :disabled="configLoading || configSaving" type="button" @click="loadConfigFile">Reload</button>
-          <button class="button button--primary" :disabled="configLoading || configSaving" data-testid="config-save" type="submit">
-            <LoaderCircle v-if="configSaving" class="spin" :size="16" />
-            <span>{{ configSaving ? 'Saving…' : 'Save config' }}</span>
-          </button>
-        </div>
-      </form>
-    </dialog>
+    <DrilldownDrawer />
   </div>
 </template>

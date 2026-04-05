@@ -16,7 +16,9 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.Path
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -26,6 +28,13 @@ class ApiContractTests(
 ) {
     companion object {
         private val testDataDir = Files.createTempDirectory("code-flux-api-tests")
+        private val testConfigPath = testDataDir.resolve("config.yaml")
+        private val exampleConfigPath = listOf(
+            Path.of("config/config.example.yaml"),
+            Path.of("../config/config.example.yaml"),
+        )
+            .map { it.toAbsolutePath().normalize() }
+            .first(Files::exists)
 
         @JvmStatic
         @DynamicPropertySource
@@ -34,11 +43,18 @@ class ApiContractTests(
             registry.add("git.mirrorDir") { testDataDir.resolve("mirrors").toString() }
             registry.add("app.openBrowserOnStart") { "false" }
             registry.add("git.auth.httpToken") { "" }
+            registry.add("APP_CONFIG_FILE") { testConfigPath.toString() }
         }
     }
 
     @BeforeEach
     fun seedData() {
+        Files.writeString(
+            testConfigPath,
+            Files.readString(exampleConfigPath, StandardCharsets.UTF_8),
+            StandardCharsets.UTF_8,
+        )
+
         jdbcClient.sql("DELETE FROM annotation").update()
         jdbcClient.sql("DELETE FROM daily_fact").update()
         jdbcClient.sql("DELETE FROM commit_file_fact").update()
@@ -87,6 +103,104 @@ class ApiContractTests(
             .andExpect(jsonPath("$.lastSuccessfulSyncAt").value("2026-03-02T10:15:00Z"))
             .andExpect(jsonPath("$.uiDefaults.defaultChartLibrary").value("echarts"))
             .andExpect(jsonPath("$.uiDefaults.defaultDateFrom").value("2025-01-01"))
+    }
+
+    @Test
+    fun `config builder endpoint returns editable config and yaml`() {
+        mockMvc.perform(get("/api/config/builder"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.path").value(testConfigPath.toString()))
+            .andExpect(jsonPath("$.config.repos[0].id").value("marcando-api"))
+            .andExpect(jsonPath("$.config.authors.include[0].id").value("eli"))
+            .andExpect(jsonPath("$.yaml").isString)
+            .andExpect(jsonPath("$.restartRequired").value(false))
+    }
+
+    @Test
+    fun `config builder update persists structured config`() {
+        mockMvc.perform(
+            put("/api/config/builder")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "app": {
+                        "baseUrl": "http://localhost:8086",
+                        "dataDir": "/tmp/code-flux",
+                        "openBrowserOnStart": false,
+                        "logLevel": "INFO"
+                      },
+                      "git": {
+                        "executable": "git",
+                        "mirrorDir": "/tmp/code-flux/mirrors",
+                        "timeoutSeconds": 120,
+                        "includeMergeCommits": false,
+                        "deduplicateByPatchId": true,
+                        "useAuthoredDate": true,
+                        "auth": {
+                          "httpUsername": "oauth2",
+                          "httpToken": "__CODE_FLUX_REDACTED__"
+                        }
+                      },
+                      "repos": [
+                        {
+                          "id": "marcando-api",
+                          "displayName": "Marcando API V2",
+                          "cloneUrl": "https://gitlab.encima.be/shop/marcando-api.git",
+                          "enabled": true,
+                          "productCode": "MARCANDO",
+                          "branchPatterns": ["main", "develop"],
+                          "excludeBranchPatterns": ["archive/*"],
+                          "excludePathGlobs": ["generated/**"]
+                        }
+                      ],
+                      "authors": {
+                        "include": [
+                          {
+                            "id": "eli",
+                            "displayName": "Eli",
+                            "emails": ["eli@marcando.be"],
+                            "names": ["Eli"],
+                            "cohort": "agentic"
+                          }
+                        ]
+                      },
+                      "classification": {
+                        "languageByExtension": {
+                          "kt": "kotlin",
+                          "ts": "typescript"
+                        },
+                        "rules": [
+                          {
+                            "id": "docs",
+                            "whenPathMatches": ["**/*.md"],
+                            "category": "docs",
+                            "subtype": "docs"
+                          }
+                        ]
+                      },
+                      "uiDefaults": {
+                        "defaultMetric": "lines_added",
+                        "defaultGroupBy": "author",
+                        "defaultChartLibrary": "echarts",
+                        "defaultIncludeCategories": ["production"],
+                        "defaultExcludeCategories": ["docs"],
+                        "defaultDateFrom": "2025-01-01",
+                        "defaultDateTo": "2025-12-31"
+                      },
+                      "syncWindow": {
+                        "from": "2025-01-01",
+                        "to": "2025-12-31"
+                      }
+                    }
+                    """.trimIndent(),
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.config.repos[0].displayName").value("Marcando API V2"))
+            .andExpect(jsonPath("$.yaml").value(org.hamcrest.Matchers.containsString("Marcando API V2")))
+            .andExpect(jsonPath("$.yaml").value(org.hamcrest.Matchers.containsString("__CODE_FLUX_REDACTED__")))
+            .andExpect(jsonPath("$.restartRequired").value(true))
     }
 
     @Test
@@ -217,5 +331,14 @@ class ApiContractTests(
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.title").value("Invalid request"))
+    }
+
+    @Test
+    fun `spa routes forward to index html`() {
+        mockMvc.perform(get("/widgets/new"))
+            .andExpect(status().isOk)
+
+        mockMvc.perform(get("/pages/page-example"))
+            .andExpect(status().isOk)
     }
 }

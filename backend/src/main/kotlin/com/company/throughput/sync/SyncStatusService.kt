@@ -2,7 +2,9 @@ package com.company.throughput.sync
 
 import com.company.throughput.persistence.RepoSyncStateRecord
 import com.company.throughput.persistence.SyncRunRecord
+import com.company.throughput.persistence.SyncRunEventRecord
 import com.company.throughput.persistence.SyncStateRepository
+import com.company.throughput.v2.model.SyncLogEntryDto
 import org.springframework.stereotype.Service
 import java.time.Instant
 
@@ -36,6 +38,7 @@ data class SyncStatusResponse(
     val current: CurrentSyncStatusDto?,
     val lastRun: SyncRunStatusDto?,
     val repos: List<RepoSyncStatusDto>,
+    val logEntries: List<SyncLogEntryDto>,
 )
 
 @Service
@@ -46,11 +49,13 @@ class SyncStatusService(
     fun currentStatus(): SyncStatusResponse {
         val runtimeStatus = syncRuntimeState.currentStatus()
         val currentRepoId = runtimeStatus?.currentRepoId
+        val currentRunId = runtimeStatus?.syncRunId ?: syncStateRepository.latestRun()?.syncRunId
         return SyncStatusResponse(
             running = syncRuntimeState.isRunning(),
             current = runtimeStatus?.toDto(),
             lastRun = syncStateRepository.latestRun()?.toDto(),
             repos = syncStateRepository.repoStates().map { it.toDto(currentRepoId) },
+            logEntries = currentRunId?.let(syncStateRepository::syncRunEvents)?.map { it.toDto() }.orEmpty(),
         )
     }
 
@@ -77,5 +82,17 @@ class SyncStatusService(
         status = if (repoId == currentRepoId) "RUNNING" else status,
         lastSuccessfulSyncedAt = lastSuccessfulSyncedAt,
         lastErrorMessage = lastErrorMessage,
+    )
+
+    private fun SyncRunEventRecord.toDto(): SyncLogEntryDto = SyncLogEntryDto(
+        eventKey = eventKey,
+        sourceKind = sourceKind,
+        repoId = repoId,
+        label = label,
+        detail = detail,
+        status = status,
+        startedAt = startedAt,
+        finishedAt = finishedAt,
+        progressPercent = progressPercent,
     )
 }

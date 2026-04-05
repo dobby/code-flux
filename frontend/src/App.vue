@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  GitBranch,
   LayoutGrid,
   LoaderCircle,
   MoreHorizontal,
@@ -27,6 +28,7 @@ useShellChrome()
 
 const sidebarCollapsed = ref(false)
 const expandedSidebarWidth = ref(280)
+const collapsedSidebarWidth = 52
 
 const currentPage = computed(() => (
   workspace.pages.find((page) => page.id === route.params.pageId) ?? null
@@ -37,7 +39,9 @@ const isSettingsRoute = computed(() => (
 ))
 
 const shellStyle = computed(() => {
-  if (sidebarCollapsed.value) return {}
+  if (sidebarCollapsed.value) {
+    return { '--cf-sidebar-width': `${collapsedSidebarWidth}px` }
+  }
   return { '--cf-sidebar-width': `${expandedSidebarWidth.value}px` }
 })
 
@@ -46,10 +50,13 @@ const currentSectionLabel = computed(() => {
     case 'settings-general': return 'General'
     case 'settings-jira': return 'Jira'
     case 'sync': return 'Sync'
+    case 'explorer':
+    case 'explorer-commit': return 'Explorer'
     case 'legacy-overview': return 'Legacy Overview'
     case 'widgets':
     case 'widget-new':
     case 'widget-edit': return 'Widget Catalog'
+    case 'page': return ''
     default: return currentPage.value?.title ?? 'Code Flux'
   }
 })
@@ -200,6 +207,16 @@ onMounted(() => {
               <span v-if="dashboard.syncStatus?.running" class="sync-status-badge sync-status-badge--live">
                 {{ syncProgressPercent }}%
               </span>
+            </RouterLink>
+
+            <RouterLink
+              class="sidebar-item"
+              :class="{ 'sidebar-item--active': route.name === 'explorer' || route.name === 'explorer-commit' }"
+              :to="{ name: 'explorer' }"
+              data-testid="nav-explorer"
+            >
+              <GitBranch class="sidebar-icon" :size="15" />
+              <span class="sidebar-item__label">Explorer</span>
             </RouterLink>
 
             <RouterLink

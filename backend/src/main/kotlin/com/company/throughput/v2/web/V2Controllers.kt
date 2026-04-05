@@ -8,6 +8,7 @@ import com.company.throughput.v2.model.CreateWidgetDefinitionRequest
 import com.company.throughput.v2.model.DayDrilldownRequest
 import com.company.throughput.v2.model.ExecuteQueryRequest
 import com.company.throughput.v2.model.FeatureFlagsDto
+import com.company.throughput.v2.model.EditorLaunchRequest
 import com.company.throughput.v2.model.JiraSecretRequest
 import com.company.throughput.v2.model.JiraSettingsResponse
 import com.company.throughput.v2.model.LayoutUpdateItem
@@ -15,6 +16,7 @@ import com.company.throughput.v2.model.QueryPreviewRequest
 import com.company.throughput.v2.model.ReorderLayoutRequest
 import com.company.throughput.v2.model.ReorderPagesRequest
 import com.company.throughput.v2.model.SnapshotStatusResponse
+import com.company.throughput.v2.model.PageStateRequest
 import com.company.throughput.v2.model.UpdateAnnotationV2Request
 import com.company.throughput.v2.model.UpdateJiraSettingsRequest
 import com.company.throughput.v2.model.UpdatePageRequest
@@ -25,6 +27,7 @@ import com.company.throughput.v2.service.DayDrilldownService
 import com.company.throughput.v2.service.JiraClient
 import com.company.throughput.v2.service.JiraSettingsService
 import com.company.throughput.v2.service.JiraSyncService
+import com.company.throughput.v2.service.ExplorerService
 import com.company.throughput.v2.service.PageService
 import com.company.throughput.v2.service.QueryExecutionService
 import com.company.throughput.v2.service.QuerySchemaRegistry
@@ -53,20 +56,23 @@ class BootstrapV2Controller(
     private val querySchemaRegistry: QuerySchemaRegistry,
     private val jiraSettingsService: JiraSettingsService,
 ) {
+    private fun com.company.throughput.v2.model.DashboardPage.toSummary() =
+        com.company.throughput.v2.model.PageSummaryDto(
+            id = id,
+            slug = slug,
+            title = title,
+            description = description,
+            icon = icon,
+            sortOrder = sortOrder,
+            archived = archived,
+            timeRange = timeRange,
+            filters = filters,
+        )
+
     @GetMapping("/bootstrap")
     fun bootstrap(): BootstrapV2Response = BootstrapV2Response(
         appName = "Code Flux",
-        pages = pageService.list().map {
-            com.company.throughput.v2.model.PageSummaryDto(
-                id = it.id,
-                slug = it.slug,
-                title = it.title,
-                description = it.description,
-                icon = it.icon,
-                sortOrder = it.sortOrder,
-                archived = it.archived,
-            )
-        },
+        pages = pageService.list().map { it.toSummary() },
         widgets = widgetCatalogService.summary(),
         datasets = querySchemaRegistry.schema(),
         featureFlags = FeatureFlagsDto(
@@ -93,6 +99,8 @@ class PagesV2Controller(
             icon = it.icon,
             sortOrder = it.sortOrder,
             archived = it.archived,
+            timeRange = it.timeRange,
+            filters = it.filters,
         )
     }
 
@@ -111,6 +119,13 @@ class PagesV2Controller(
 
     @PostMapping("/{pageId}/duplicate")
     fun duplicate(@PathVariable pageId: String) = pageService.duplicate(pageId)
+
+    @GetMapping("/{pageId}/state")
+    fun state(@PathVariable pageId: String) = pageService.get(pageId)
+
+    @PutMapping("/{pageId}/state")
+    fun updateState(@PathVariable pageId: String, @Valid @RequestBody request: PageStateRequest) =
+        pageService.updateState(pageId, request.timeRange, request.filters)
 
     @PostMapping("/{pageId}/archive")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -225,6 +240,22 @@ class DrilldownV2Controller(
 ) {
     @PostMapping("/day")
     fun day(@Valid @RequestBody request: DayDrilldownRequest) = dayDrilldownService.load(request)
+}
+
+@RestController
+@RequestMapping("/api/v2/explorer")
+class ExplorerV2Controller(
+    private val explorerService: ExplorerService,
+) {
+    @GetMapping("/commit/{repoId}/{commitSha}")
+    fun commitDetail(
+        @PathVariable repoId: String,
+        @PathVariable commitSha: String,
+    ) = explorerService.commitDetail(repoId, commitSha)
+
+    @PostMapping("/open-in-editor")
+    fun openInEditor(@Valid @RequestBody request: EditorLaunchRequest) =
+        explorerService.launchEditor(request)
 }
 
 @RestController

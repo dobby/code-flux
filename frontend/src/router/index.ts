@@ -7,6 +7,8 @@ import JiraSettingsView from '../views/JiraSettingsView.vue'
 import GeneralSettingsView from '../views/GeneralSettingsView.vue'
 import SyncView from '../views/SyncView.vue'
 import DashboardView from '../views/DashboardView.vue'
+import ExplorerView from '../views/ExplorerView.vue'
+import ExplorerCommitDetailView from '../views/ExplorerCommitDetailView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -20,6 +22,17 @@ export const router = createRouter({
       path: '/sync',
       name: 'sync',
       component: SyncView,
+    },
+    {
+      path: '/explorer',
+      name: 'explorer',
+      component: ExplorerView,
+    },
+    {
+      path: '/explorer/commit/:repoId/:commitSha',
+      name: 'explorer-commit',
+      component: ExplorerCommitDetailView,
+      props: true,
     },
     {
       path: '/pages/:pageId',

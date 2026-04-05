@@ -173,6 +173,25 @@ test.describe('v2 workspace', () => {
     expect(jiraStatus.secretConfigured).toBe(true)
   })
 
+  test('route smoke checks for v2 states', async ({ page }) => {
+    const routes = [
+      { path: '/widgets' },
+      { path: '/widgets/new' },
+      { path: '/settings/general' },
+      { path: '/settings/jira' },
+      { path: '/sync' },
+      { path: '/explorer' },
+      { path: '/legacy/overview' },
+    ]
+
+    for (const route of routes) {
+      await page.goto(route.path)
+      await expect(page).toHaveURL(new RegExp(`${route.path}/?$`))
+      await expect(page.getByTestId('app-sidebar')).toBeVisible()
+      await expect(page.getByTestId('app-header')).toBeVisible()
+    }
+  })
+
   test('legacy overview route remains available', async ({ page }) => {
     await page.goto('/legacy/overview')
     await expect(page.getByTestId('app-sidebar')).toBeVisible()

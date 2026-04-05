@@ -12,6 +12,11 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.time.Instant
 
+data class WidgetUsageMetadata(
+    val usageCount: Int,
+    val usedOnPages: List<String>,
+)
+
 @Repository
 class WidgetDefinitionRepository(
     private val jdbcClient: JdbcClient,
@@ -47,6 +52,72 @@ class WidgetDefinitionRepository(
             .query { rs, _ -> mapDefinition(rs) }
             .optional()
             .orElse(null)
+
+    fun usageMetadata(widgetId: String): WidgetUsageMetadata {
+        val row = jdbcClient.sql(
+            """
+            SELECT
+              COUNT(DISTINCT pwi.id) AS usage_count,
+              GROUP_CONCAT(DISTINCT p.title) AS page_titles
+            FROM widget_definitions w
+            LEFT JOIN page_widget_instances pwi
+              ON pwi.widget_definition_id = w.id
+            LEFT JOIN dashboard_pages p
+              ON p.id = pwi.page_id
+            WHERE w.id = :widgetId
+            GROUP BY w.id
+            """.trimIndent(),
+        )
+            .param("widgetId", widgetId)
+            .query { rs, _ ->
+                WidgetUsageMetadata(
+                    usageCount = rs.getInt("usage_count"),
+                    usedOnPages = rs.getString("page_titles")
+                        ?.split(",")
+                        ?.map(String::trim)
+                        ?.filter(String::isNotBlank)
+                        .orEmpty(),
+                )
+            }
+            .optional()
+            .orElse(WidgetUsageMetadata(usageCount = 0, usedOnPages = emptyList()))
+        return row
+    }
+
+    fun usageMetadataFor(widgetIds: Collection<String>): Map<String, WidgetUsageMetadata> {
+        if (widgetIds.isEmpty()) {
+            return emptyMap()
+        }
+        val placeholders = widgetIds.mapIndexed { index, _ -> ":widgetId$index" }
+        var spec = jdbcClient.sql(
+            """
+            SELECT
+              w.id AS widget_id,
+              COUNT(DISTINCT pwi.id) AS usage_count,
+              GROUP_CONCAT(DISTINCT p.title) AS page_titles
+            FROM widget_definitions w
+            LEFT JOIN page_widget_instances pwi
+              ON pwi.widget_definition_id = w.id
+            LEFT JOIN dashboard_pages p
+              ON p.id = pwi.page_id
+            WHERE w.id IN (${placeholders.joinToString(", ")})
+            GROUP BY w.id
+            """.trimIndent(),
+        )
+        widgetIds.forEachIndexed { index, widgetId ->
+            spec = spec.param("widgetId$index", widgetId)
+        }
+        return spec.query { rs, _ ->
+            rs.getString("widget_id") to WidgetUsageMetadata(
+                usageCount = rs.getInt("usage_count"),
+                usedOnPages = rs.getString("page_titles")
+                    ?.split(",")
+                    ?.map(String::trim)
+                    ?.filter(String::isNotBlank)
+                    .orEmpty(),
+            )
+        }.list().toMap()
+    }
 
     fun create(
         title: String,
@@ -169,6 +240,8 @@ class WidgetDefinitionRepository(
             isSystem = rs.getInt("is_system") == 1,
             version = rs.getInt("version"),
             archived = rs.getInt("archived") == 1,
+            usageCount = 0,
+            usedOnPages = emptyList(),
             createdAt = parseInstant(rs.getString("created_at")),
             updatedAt = parseInstant(rs.getString("updated_at")),
         )

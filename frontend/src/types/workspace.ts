@@ -21,6 +21,21 @@ export type TimeBucket = 'day' | 'week' | 'month'
 export type AggregationType = 'sum' | 'count' | 'avg' | 'min' | 'max'
 export type FilterOperator = 'in' | 'not_in' | 'eq' | 'neq' | 'gte' | 'lte' | 'between' | 'contains'
 export type ComparisonModeV2 = 'none' | 'previous_period' | 'same_period_last_year' | 'custom_period'
+export type AnnotationTypeV2 = 'feature' | 'incident' | 'project' | 'note'
+export type AnnotationTargetKind = 'global_date' | 'widget_point'
+
+export interface PageTimeRange {
+  preset?: string | null
+  from?: string | null
+  to?: string | null
+}
+
+export interface PageFilterState {
+  field: string
+  op: FilterOperator
+  values: string[]
+  locked: boolean
+}
 
 export interface MeasureSpec {
   field: string
@@ -90,6 +105,8 @@ export interface PageSummary {
   icon: string | null
   sortOrder: number
   archived: boolean
+  timeRange: PageTimeRange | null
+  filters: PageFilterState[]
 }
 
 export interface WidgetCatalogSummary {
@@ -102,6 +119,8 @@ export interface WidgetCatalogSummary {
   datasetKey: DatasetKey | null
   isSystem: boolean
   archived: boolean
+  usageCount: number
+  usedOnPages: string[]
 }
 
 export interface WidgetDefinition extends WidgetCatalogSummary {
@@ -176,17 +195,27 @@ export interface QueryExecutionResponse {
 
 export interface AnnotationV2 {
   id: string
-  targetKind: 'global_date' | 'widget_point'
+  targetKind: AnnotationTargetKind
   pageWidgetInstanceId: string | null
   scopeDate: string | null
   xValue: string | null
   yValue: number | null
+  annotationType: AnnotationTypeV2
+  name: string | null
+  description: string | null
   title: string
   body: string | null
   color: string | null
+  tags: string[]
+  commitRefs: AnnotationCommitRef[]
   scope: Record<string, unknown>
   createdAt: string
   updatedAt: string
+}
+
+export interface AnnotationCommitRef {
+  repoId: string
+  commitSha: string
 }
 
 export interface DrilldownSummary {
@@ -277,4 +306,58 @@ export interface SnapshotStatusItem {
 
 export interface SnapshotStatusResponse {
   items: SnapshotStatusItem[]
+}
+
+export interface SyncLogEntry {
+  eventKey: string
+  sourceKind: string
+  repoId: string | null
+  label: string
+  detail: string | null
+  status: string
+  startedAt: string | null
+  finishedAt: string | null
+  progressPercent: number | null
+}
+
+export interface CommitFileChange {
+  filePath: string
+  oldPath: string | null
+  language: string | null
+  category: string | null
+  subtype: string | null
+  linesAdded: number
+  linesRemoved: number
+  isBinary: boolean
+}
+
+export interface CommitDetailResponse {
+  repoId: string
+  commitSha: string
+  authorName: string
+  authorEmail: string | null
+  authoredAt: string
+  committedAt: string
+  subject: string
+  parentCommitShas: string[]
+  linesAdded: number
+  linesRemoved: number
+  files: CommitFileChange[]
+  annotations: AnnotationV2[]
+}
+
+export interface EditorLaunchRequest {
+  repoId: string
+  commitSha: string
+  filePaths?: string[]
+}
+
+export interface EditorLaunchResponse {
+  available: boolean
+  reason: string | null
+  repoId: string
+  commitSha: string
+  repoPath: string | null
+  editorCommand: string | null
+  filePaths: string[]
 }

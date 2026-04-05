@@ -13,4 +13,7 @@ contextBridge.exposeInMainWorld('codeFluxSecure', {
   saveJiraToken: async (token) => {
     await ipcRenderer.invoke('jira-secret-save', token)
   },
+  openCommitInEditor: async (request) => {
+    return ipcRenderer.invoke('editor-launch-open', request)
+  },
 })

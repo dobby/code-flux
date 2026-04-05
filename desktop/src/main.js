@@ -9,6 +9,11 @@ const PRODUCT_NAME = 'Code Flux'
 const HEALTH_TIMEOUT_MS = 30_000
 const HEALTH_POLL_INTERVAL_MS = 500
 const BACKEND_LOG_NAME = 'backend.log'
+const WINDOW_WIDTH = parseIntegerEnv('CODE_FLUX_WINDOW_WIDTH', 1440)
+const WINDOW_HEIGHT = parseIntegerEnv('CODE_FLUX_WINDOW_HEIGHT', 960)
+const CAPTURE_DELAY_MS = parseIntegerEnv('CODE_FLUX_CAPTURE_DELAY_MS', 1500)
+const CAPTURE_PATH = process.env.CODE_FLUX_CAPTURE_PATH || null
+const CAPTURE_AND_EXIT = process.env.CODE_FLUX_CAPTURE_AND_EXIT === '1'
 
 app.setName(PRODUCT_NAME)
 app.setPath('userData', path.join(app.getPath('appData'), PRODUCT_NAME))
@@ -93,6 +98,26 @@ function installSecureIpc() {
     storeSecret(JIRA_SECRET_NAME, token.trim())
     await postToLocalApi('/api/v2/settings/jira/secret', { token: token.trim() })
   })
+
+  ipcMain.handle('editor-launch-open', async (_event, request) => {
+    if (!currentTargetUrl) {
+      throw new Error('Local API is not available yet')
+    }
+
+    const response = await requestLocalApi('/api/v2/explorer/open-in-editor', request)
+    if (!response.available) {
+      return response
+    }
+
+    const child = spawn(response.editorCommand, response.filePaths ?? [], {
+      detached: true,
+      stdio: 'ignore',
+      shell: false,
+      env: process.env,
+    })
+    child.unref()
+    return response
+  })
 }
 
 function createWindow(targetUrl) {
@@ -103,8 +128,8 @@ function createWindow(targetUrl) {
 
   mainWindow = new BrowserWindow({
     title: PRODUCT_NAME,
-    width: 1440,
-    height: 960,
+    width: WINDOW_WIDTH,
+    height: WINDOW_HEIGHT,
     minWidth: 1100,
     minHeight: 720,
     show: false,
@@ -156,6 +181,9 @@ function createWindow(targetUrl) {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
+    if (CAPTURE_PATH) {
+      void captureWindow(mainWindow)
+    }
   })
 
   if (process.platform === 'win32' && typeof mainWindow.setBackgroundMaterial === 'function') {
@@ -167,6 +195,16 @@ function createWindow(targetUrl) {
   })
 
   void mainWindow.loadURL(targetUrl)
+}
+
+async function captureWindow(windowRef) {
+  await new Promise((resolve) => setTimeout(resolve, CAPTURE_DELAY_MS))
+  const image = await windowRef.webContents.capturePage()
+  fs.mkdirSync(path.dirname(CAPTURE_PATH), { recursive: true })
+  fs.writeFileSync(CAPTURE_PATH, image.toPNG())
+  if (CAPTURE_AND_EXIT) {
+    setTimeout(() => app.quit(), 100)
+  }
 }
 
 async function resolveLaunchTarget() {
@@ -236,6 +274,12 @@ function resolveWindowIconPath() {
   return fs.existsSync(devIconPath) ? devIconPath : undefined
 }
 
+function parseIntegerEnv(name, fallback) {
+  const raw = process.env[name]
+  const parsed = Number.parseInt(raw || '', 10)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 async function startBackend({ resourcesDir, port, appBaseUrl, configPath, dataDir }) {
   const backendMode = detectBackendMode(resourcesDir)
   const environment = {
@@ -299,8 +343,12 @@ function readSecret(name) {
 }
 
 async function postToLocalApi(pathname, payload) {
+  await requestLocalApi(pathname, payload)
+}
+
+async function requestLocalApi(pathname, payload) {
   if (!currentTargetUrl) {
-    return
+    throw new Error('Local API is not available yet')
   }
 
   const target = new URL(pathname, currentTargetUrl).toString()
@@ -315,8 +363,15 @@ async function postToLocalApi(pathname, payload) {
 
   if (!response.ok) {
     const detail = await response.text().catch(() => response.statusText)
-    throw new Error(`Secret handoff failed: ${response.status} ${detail}`)
+    throw new Error(`Local API request failed: ${response.status} ${detail}`)
   }
+
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('application/json')) {
+    return response.json()
+  }
+
+  return response.text()
 }
 
 function detectBackendMode(resourcesDir) {

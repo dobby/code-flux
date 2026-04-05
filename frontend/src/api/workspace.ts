@@ -1,11 +1,20 @@
 import type {
   AnnotationV2,
+  AnnotationCommitRef,
+  AnnotationTargetKind,
+  AnnotationTypeV2,
   BootstrapV2Response,
+  CommitDetailResponse,
   DayDrilldownResponse,
+  EditorLaunchRequest,
+  EditorLaunchResponse,
   FilterSpec,
   JiraSettingsResponse,
   JiraSyncStatusResponse,
   LayoutSpec,
+  PageFilterState,
+  PageSummary,
+  PageTimeRange,
   PageWidgetResolved,
   QueryExecutionResponse,
   QuerySchemaDataset,
@@ -49,6 +58,17 @@ export function getV2Bootstrap() {
 
 export function listPages() {
   return request<BootstrapV2Response['pages']>('/api/v2/pages')
+}
+
+export function getPageState(pageId: string) {
+  return request<PageSummary>(`/api/v2/pages/${pageId}/state`)
+}
+
+export function updatePageState(pageId: string, payload: { timeRange?: PageTimeRange | null; filters: PageFilterState[] }) {
+  return request<PageSummary>(`/api/v2/pages/${pageId}/state`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
 }
 
 export function createPage(payload: { title: string; description?: string | null; icon?: string | null }) {
@@ -217,14 +237,19 @@ export function listAnnotationsV2(params?: { pageWidgetInstanceId?: string; date
 }
 
 export function createAnnotationV2(payload: {
-  targetKind: 'global_date' | 'widget_point'
+  targetKind: AnnotationTargetKind
   pageWidgetInstanceId?: string | null
   scopeDate?: string | null
   xValue?: string | null
   yValue?: number | null
-  title: string
+  annotationType?: AnnotationTypeV2
+  name?: string | null
+  description?: string | null
+  title?: string | null
   body?: string | null
   color?: string | null
+  tags?: string[]
+  commitRefs?: AnnotationCommitRef[]
   scope?: Record<string, unknown>
 }) {
   return request<AnnotationV2>('/api/v2/annotations', {
@@ -233,7 +258,16 @@ export function createAnnotationV2(payload: {
   })
 }
 
-export function updateAnnotationV2(annotationId: string, payload: { title: string; body?: string | null; color?: string | null }) {
+export function updateAnnotationV2(annotationId: string, payload: {
+  annotationType?: AnnotationTypeV2 | null
+  name?: string | null
+  description?: string | null
+  title?: string | null
+  body?: string | null
+  color?: string | null
+  tags?: string[] | null
+  commitRefs?: AnnotationCommitRef[] | null
+}) {
   return request<AnnotationV2>(`/api/v2/annotations/${annotationId}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
@@ -253,6 +287,17 @@ export function loadDayDrilldown(payload: {
   selectedSeries?: { field: string; value: string } | null
 }) {
   return request<DayDrilldownResponse>('/api/v2/drilldown/day', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getExplorerCommitDetail(repoId: string, commitSha: string) {
+  return request<CommitDetailResponse>(`/api/v2/explorer/commit/${encodeURIComponent(repoId)}/${encodeURIComponent(commitSha)}`)
+}
+
+export function openCommitInEditor(payload: EditorLaunchRequest) {
+  return request<EditorLaunchResponse>('/api/v2/explorer/open-in-editor', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

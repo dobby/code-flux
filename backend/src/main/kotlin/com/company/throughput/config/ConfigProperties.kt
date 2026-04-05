@@ -26,6 +26,7 @@ data class AppProperties(
     val openBrowserOnStart: Boolean = true,
     @field:NotBlank
     val logLevel: String = "INFO",
+    val editorCommand: String? = null,
 )
 
 @Validated
@@ -101,6 +102,7 @@ data class RepoConfig(
     val cloneUrl: String,
     val enabled: Boolean = true,
     val productCode: String? = null,
+    val localPath: String? = null,
     @field:NotEmpty
     val branchPatterns: List<String> = emptyList(),
     val excludeBranchPatterns: List<String> = emptyList(),

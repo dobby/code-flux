@@ -147,6 +147,9 @@ class ConfigFileService(
         }
         document.repos.forEach { repo ->
             require(repo.branchPatterns.isNotEmpty()) { "Repository ${repo.id} branchPatterns must not be empty" }
+            if (repo.localPath != null) {
+                require(repo.localPath.isNotBlank()) { "Repository ${repo.id} localPath must not be blank" }
+            }
         }
     }
 

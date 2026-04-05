@@ -3,6 +3,7 @@ app:
   dataDir: "/tmp/code-flux"
   openBrowserOnStart: false
   logLevel: "INFO"
+  editorCommand: "code"
 
 git:
   executable: "git"
@@ -19,6 +20,7 @@ repos:
   - id: "marcando-api"
     displayName: "Marcando API"
     cloneUrl: "https://gitlab.encima.be/shop/marcando-api.git"
+    localPath: "/path/to/marcando-api"
     enabled: true
     productCode: "MARCANDO"
     branchPatterns:

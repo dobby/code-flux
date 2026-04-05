@@ -19,6 +19,20 @@ data class RepoSyncStateRecord(
     val lastErrorMessage: String?,
 )
 
+data class SyncRunEventRecord(
+    val eventKey: String,
+    val syncRunId: Long,
+    val sortOrder: Int,
+    val sourceKind: String,
+    val repoId: String?,
+    val label: String,
+    val detail: String?,
+    val status: String,
+    val startedAt: Instant?,
+    val finishedAt: Instant?,
+    val progressPercent: Int?,
+)
+
 @Repository
 class SyncStateRepository(
     private val jdbcClient: JdbcClient,
@@ -140,6 +154,120 @@ class SyncStateRepository(
                         ?.let(::normalizeTimestamp)
                         ?.let(Instant::parse),
                     lastErrorMessage = lastError,
+                )
+            }
+            .list()
+
+    fun seedRunEvents(
+        syncRunId: Long,
+        repoIds: List<String>,
+        jiraEnabled: Boolean,
+    ) {
+        val events = repoIds.mapIndexed { index, repoId ->
+            SyncRunEventRecord(
+                eventKey = "repo:$repoId",
+                syncRunId = syncRunId,
+                sortOrder = index,
+                sourceKind = "git",
+                repoId = repoId,
+                label = repoId,
+                detail = "Queued",
+                status = "QUEUED",
+                startedAt = null,
+                finishedAt = null,
+                progressPercent = null,
+            )
+        } + SyncRunEventRecord(
+            eventKey = "jira:enrichment",
+            syncRunId = syncRunId,
+            sortOrder = repoIds.size,
+            sourceKind = "jira",
+            repoId = null,
+            label = "Jira enrichment",
+            detail = if (jiraEnabled) "Queued" else "Disabled",
+            status = "QUEUED",
+            startedAt = null,
+            finishedAt = null,
+            progressPercent = null,
+        )
+
+        events.forEach { event ->
+            jdbcClient.sql(
+                """
+                INSERT OR REPLACE INTO sync_run_events (
+                  event_key, sync_run_id, sort_order, source_kind, repo_id, label, detail,
+                  status, started_at, finished_at, progress_percent, created_at, updated_at
+                ) VALUES (
+                  :eventKey, :syncRunId, :sortOrder, :sourceKind, :repoId, :label, :detail,
+                  :status, :startedAt, :finishedAt, :progressPercent, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                """.trimIndent(),
+            )
+                .param("eventKey", event.eventKey)
+                .param("syncRunId", event.syncRunId)
+                .param("sortOrder", event.sortOrder)
+                .param("sourceKind", event.sourceKind)
+                .param("repoId", event.repoId)
+                .param("label", event.label)
+                .param("detail", event.detail)
+                .param("status", event.status)
+                .param("startedAt", event.startedAt?.toString())
+                .param("finishedAt", event.finishedAt?.toString())
+                .param("progressPercent", event.progressPercent)
+                .update()
+        }
+    }
+
+    fun updateRunEvent(
+        eventKey: String,
+        status: String,
+        detail: String?,
+        progressPercent: Int?,
+        finishedAt: Instant? = null,
+    ) {
+        jdbcClient.sql(
+            """
+            UPDATE sync_run_events
+            SET status = :status,
+                detail = :detail,
+                progress_percent = :progressPercent,
+                finished_at = :finishedAt,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE event_key = :eventKey
+            """.trimIndent(),
+        )
+            .param("eventKey", eventKey)
+            .param("status", status)
+            .param("detail", detail)
+            .param("progressPercent", progressPercent)
+            .param("finishedAt", finishedAt?.toString())
+            .update()
+    }
+
+    fun syncRunEvents(syncRunId: Long): List<SyncRunEventRecord> =
+        jdbcClient.sql(
+            """
+            SELECT event_key, sync_run_id, sort_order, source_kind, repo_id, label, detail,
+                   status, started_at, finished_at, progress_percent
+            FROM sync_run_events
+            WHERE sync_run_id = :syncRunId
+            ORDER BY sort_order ASC, event_key ASC
+            """.trimIndent(),
+        )
+            .param("syncRunId", syncRunId)
+            .query { rs, _ ->
+                SyncRunEventRecord(
+                    eventKey = rs.getString("event_key"),
+                    syncRunId = rs.getLong("sync_run_id"),
+                    sortOrder = rs.getInt("sort_order"),
+                    sourceKind = rs.getString("source_kind"),
+                    repoId = rs.getString("repo_id"),
+                    label = rs.getString("label"),
+                    detail = rs.getString("detail"),
+                    status = rs.getString("status"),
+                    startedAt = rs.getString("started_at")?.let(::normalizeTimestamp)?.let(Instant::parse),
+                    finishedAt = rs.getString("finished_at")?.let(::normalizeTimestamp)?.let(Instant::parse),
+                    progressPercent = rs.getInt("progress_percent").takeUnless { rs.wasNull() },
                 )
             }
             .list()

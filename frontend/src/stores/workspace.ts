@@ -13,6 +13,7 @@ import {
   duplicatePage,
   duplicateWidgetDefinition,
   executeWidgetQuery,
+  getPageState,
   getJiraSettings,
   getJiraStatus,
   getQuerySchema,
@@ -30,6 +31,7 @@ import {
   updateAnnotationV2,
   updateJiraSettings,
   updatePage,
+  updatePageState,
   updatePageWidget,
   updateWidgetDefinition,
 } from '../api/workspace'
@@ -41,7 +43,9 @@ import type {
   JiraSettingsResponse,
   JiraSyncStatusResponse,
   LayoutSpec,
+  PageFilterState,
   PageSummary,
+  PageTimeRange,
   PageWidgetResolved,
   QueryExecutionResponse,
   QuerySchemaDataset,
@@ -62,7 +66,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const pageWidgets = reactive<Record<string, PageWidgetResolved[]>>({})
   const widgetData = reactive<Record<string, QueryExecutionResponse | undefined>>({})
   const widgetAnnotations = reactive<Record<string, AnnotationV2[]>>({})
-  const pageFilters = reactive<Record<string, FilterSpec[]>>({})
+  const pageFilters = reactive<Record<string, PageFilterState[]>>({})
+  const pageTimeRanges = reactive<Record<string, PageTimeRange | null>>({})
   const saveStates = reactive<Record<string, SaveState>>({})
   const loadingPages = reactive<Record<string, boolean>>({})
   const loadingWidgets = reactive<Record<string, boolean>>({})
@@ -92,6 +97,25 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   const orderedPages = computed(() => pages.value.slice().sort((left, right) => left.sortOrder - right.sortOrder))
 
+  function syncPageStateFromPages(items: PageSummary[]) {
+    for (const page of items) {
+      pageFilters[page.id] = page.filters ?? []
+      pageTimeRanges[page.id] = page.timeRange ?? null
+    }
+  }
+
+  function mergePageSummary(page: PageSummary) {
+    pages.value = pages.value.map((entry) => (entry.id === page.id ? page : entry))
+    if (bootstrap.value) {
+      bootstrap.value = {
+        ...bootstrap.value,
+        pages: bootstrap.value.pages.map((entry) => (entry.id === page.id ? page : entry)),
+      }
+    }
+    pageFilters[page.id] = page.filters ?? []
+    pageTimeRanges[page.id] = page.timeRange ?? null
+  }
+
   async function initialize() {
     if (initialized.value || initializing.value) {
       return
@@ -108,6 +132,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ])
       bootstrap.value = bootstrapResponse
       pages.value = bootstrapResponse.pages
+      syncPageStateFromPages(bootstrapResponse.pages)
       datasets.value = schemaResponse
       jiraSettings.value = jiraSettingsResponse
       jiraStatus.value = jiraStatusResponse
@@ -125,6 +150,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const response = await getV2Bootstrap()
     bootstrap.value = response
     pages.value = response.pages
+    syncPageStateFromPages(response.pages)
   }
 
   async function loadWidgetCatalog() {
@@ -145,11 +171,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loadingPages[pageId] = true
     error.value = null
     try {
-      const widgetsForPage = await listPageWidgets(pageId)
+      const [widgetsForPage, pageState] = await Promise.all([
+        listPageWidgets(pageId),
+        getPageState(pageId),
+      ])
       pageWidgets[pageId] = widgetsForPage
-      if (!pageFilters[pageId]) {
-        pageFilters[pageId] = []
-      }
+      mergePageSummary(pageState)
       await Promise.all(widgetsForPage.map((widget) => refreshWidgetData(widget.instance.id)))
     } catch (caught) {
       error.value = toMessage(caught)
@@ -166,10 +193,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     loadingWidgets[instanceId] = true
     try {
+      const runtimeFilters = buildRuntimeFilters(widget.instance.pageId, widget.effectiveQuery.dataset)
       const [data, annotations] = await Promise.all([
         executeWidgetQuery({
           widgetInstanceId: instanceId,
-          runtimeFilters: pageFilters[widget.instance.pageId] ?? [],
+          runtimeFilters,
         }),
         listAnnotationsV2({ pageWidgetInstanceId: instanceId }),
       ])
@@ -276,7 +304,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       drilldown.data = await loadDayDrilldown({
         selectedDate: payload.selectedDate,
         dataset: payload.dataset,
-        effectiveFilters: pageFilters[payload.pageId] ?? [],
+        effectiveFilters: buildRuntimeFilters(payload.pageId, payload.dataset),
         selectedSeries: payload.selectedSeries ?? null,
       })
     } finally {
@@ -300,9 +328,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       pageWidgetInstanceId: payload.pageWidgetInstanceId,
       scopeDate: payload.scopeDate,
       xValue: payload.xValue,
+      annotationType: 'note',
+      name: payload.title,
+      description: payload.body ?? null,
       title: payload.title,
       body: payload.body ?? null,
       color: 'accent',
+      tags: [],
+      commitRefs: [],
       scope: { source: 'chart' },
     })
     widgetAnnotations[payload.pageWidgetInstanceId] = [
@@ -313,7 +346,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function updatePointAnnotation(annotationId: string, pageWidgetInstanceId: string, payload: { title: string; body?: string | null; color?: string | null }) {
-    const updated = await updateAnnotationV2(annotationId, payload)
+    const updated = await updateAnnotationV2(annotationId, {
+      name: payload.title,
+      description: payload.body ?? null,
+      title: payload.title,
+      body: payload.body ?? null,
+      color: payload.color ?? null,
+    })
     widgetAnnotations[pageWidgetInstanceId] = (widgetAnnotations[pageWidgetInstanceId] ?? []).map((annotation) =>
       annotation.id === annotationId ? updated : annotation,
     )
@@ -433,8 +472,88 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     editMode.value = value
   }
 
-  function setPageFilters(pageId: string, filters: FilterSpec[]) {
+  function resolvePresetRange(preset: string) {
+    const now = new Date()
+    const days = preset === 'last_7_days'
+      ? 7
+      : preset === 'last_14_days'
+        ? 14
+        : preset === 'last_30_days'
+          ? 30
+          : preset === 'last_90_days'
+            ? 90
+            : preset === 'last_6_months'
+              ? 180
+              : null
+
+    if (days == null) {
+      return null
+    }
+
+    const from = new Date(now)
+    from.setDate(from.getDate() - (days - 1))
+    return {
+      from: from.toISOString().slice(0, 10),
+      to: now.toISOString().slice(0, 10),
+    }
+  }
+
+  function resolvedTimeRange(pageId: string) {
+    const range = pageTimeRanges[pageId]
+    if (!range) {
+      return null
+    }
+    const presetRange = range.preset ? resolvePresetRange(range.preset) : null
+    const from = range.from ?? presetRange?.from ?? null
+    const to = range.to ?? presetRange?.to ?? null
+    if (!from || !to) {
+      return null
+    }
+    return { from, to }
+  }
+
+  function datasetSupportsTime(datasetKey: string) {
+    return datasets.value.find((dataset) => dataset.key === datasetKey)?.supportsTime ?? false
+  }
+
+  function buildRuntimeFilters(pageId: string, datasetKey?: string | null): FilterSpec[] {
+    const dataset = datasetKey ? datasets.value.find((entry) => entry.key === datasetKey) : null
+    const supportedDimensions = new Set(dataset?.dimensions.map((dimension) => dimension.key) ?? [])
+    const filters = (pageFilters[pageId] ?? [])
+      .filter((filter) => !dataset || supportedDimensions.has(filter.field))
+      .map<FilterSpec>(({ field, op, values }) => ({ field, op, values }))
+
+    if (datasetKey && datasetSupportsTime(datasetKey)) {
+      const range = resolvedTimeRange(pageId)
+      if (range) {
+        filters.unshift({
+          field: 'date',
+          op: 'between',
+          values: [range.from, range.to],
+        })
+      }
+    }
+
+    return filters
+  }
+
+  async function savePageState(pageId: string, next: { timeRange?: PageTimeRange | null; filters?: PageFilterState[] }) {
+    const response = await updatePageState(pageId, {
+      timeRange: next.timeRange ?? pageTimeRanges[pageId] ?? null,
+      filters: next.filters ?? pageFilters[pageId] ?? [],
+    })
+    mergePageSummary(response)
+    return response
+  }
+
+  async function setPageFilters(pageId: string, filters: PageFilterState[]) {
     pageFilters[pageId] = filters
+    await savePageState(pageId, { filters })
+  }
+
+  async function setPageTimeRange(pageId: string, timeRange: PageTimeRange | null) {
+    pageTimeRanges[pageId] = timeRange
+    await savePageState(pageId, { timeRange })
   }
 
   return {
@@ -446,6 +565,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     widgetData,
     widgetAnnotations,
     pageFilters,
+    pageTimeRanges,
     saveStates,
     loadingPages,
     loadingWidgets,
@@ -491,7 +611,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     findPageIdForWidget,
     setSelectedWidget,
     setEditMode,
+    buildRuntimeFilters,
     setPageFilters,
+    setPageTimeRange,
   }
 })
 

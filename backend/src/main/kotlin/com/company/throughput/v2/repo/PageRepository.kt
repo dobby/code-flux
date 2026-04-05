@@ -1,19 +1,23 @@
 package com.company.throughput.v2.repo
 
 import com.company.throughput.v2.model.DashboardPage
+import com.company.throughput.v2.model.PageFilterState
+import com.company.throughput.v2.model.PageTimeRange
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
+import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Instant
 
 @Repository
 class PageRepository(
     private val jdbcClient: JdbcClient,
+    private val objectMapper: ObjectMapper,
 ) {
     fun list(includeArchived: Boolean = false): List<DashboardPage> {
         val sql = buildString {
             append(
                 """
-                SELECT id, slug, title, description, icon, sort_order, archived, created_at, updated_at
+                SELECT id, slug, title, description, icon, sort_order, archived, time_range_json, filters_json, created_at, updated_at
                 FROM dashboard_pages
                 """.trimIndent(),
             )
@@ -32,6 +36,8 @@ class PageRepository(
                     icon = rs.getString("icon"),
                     sortOrder = rs.getInt("sort_order"),
                     archived = rs.getInt("archived") == 1,
+                    timeRange = parseTimeRange(rs.getString("time_range_json")),
+                    filters = parseFilters(rs.getString("filters_json")),
                     createdAt = parseInstant(rs.getString("created_at")),
                     updatedAt = parseInstant(rs.getString("updated_at")),
                 )
@@ -42,7 +48,7 @@ class PageRepository(
     fun findById(id: String): DashboardPage? =
         jdbcClient.sql(
             """
-            SELECT id, slug, title, description, icon, sort_order, archived, created_at, updated_at
+            SELECT id, slug, title, description, icon, sort_order, archived, time_range_json, filters_json, created_at, updated_at
             FROM dashboard_pages
             WHERE id = :id
             """.trimIndent(),
@@ -57,6 +63,8 @@ class PageRepository(
                     icon = rs.getString("icon"),
                     sortOrder = rs.getInt("sort_order"),
                     archived = rs.getInt("archived") == 1,
+                    timeRange = parseTimeRange(rs.getString("time_range_json")),
+                    filters = parseFilters(rs.getString("filters_json")),
                     createdAt = parseInstant(rs.getString("created_at")),
                     updatedAt = parseInstant(rs.getString("updated_at")),
                 )
@@ -64,7 +72,13 @@ class PageRepository(
             .optional()
             .orElse(null)
 
-    fun create(title: String, description: String?, icon: String?): DashboardPage {
+    fun create(
+        title: String,
+        description: String?,
+        icon: String?,
+        timeRange: PageTimeRange?,
+        filters: List<PageFilterState>,
+    ): DashboardPage {
         val id = newId("page")
         val slug = nextSlug(title)
         val now = Instant.now()
@@ -72,9 +86,9 @@ class PageRepository(
         jdbcClient.sql(
             """
             INSERT INTO dashboard_pages (
-              id, slug, title, description, icon, sort_order, archived, created_at, updated_at
+              id, slug, title, description, icon, sort_order, archived, time_range_json, filters_json, created_at, updated_at
             ) VALUES (
-              :id, :slug, :title, :description, :icon, :sortOrder, 0, :createdAt, :updatedAt
+              :id, :slug, :title, :description, :icon, :sortOrder, 0, :timeRangeJson, :filtersJson, :createdAt, :updatedAt
             )
             """.trimIndent(),
         )
@@ -84,13 +98,22 @@ class PageRepository(
             .param("description", description)
             .param("icon", icon)
             .param("sortOrder", nextOrder)
+            .param("timeRangeJson", serializeTimeRange(timeRange))
+            .param("filtersJson", serializeFilters(filters))
             .param("createdAt", now.toString())
             .param("updatedAt", now.toString())
             .update()
         return requireNotNull(findById(id))
     }
 
-    fun update(id: String, title: String?, description: String?, icon: String?): DashboardPage? {
+    fun update(
+        id: String,
+        title: String?,
+        description: String?,
+        icon: String?,
+        timeRange: PageTimeRange?,
+        filters: List<PageFilterState>?,
+    ): DashboardPage? {
         val current = findById(id) ?: return null
         val nextTitle = title ?: current.title
         val nextSlug = if (title != null && title != current.title) nextSlug(title, current.id) else current.slug
@@ -102,6 +125,8 @@ class PageRepository(
                 title = :title,
                 description = :description,
                 icon = :icon,
+                time_range_json = :timeRangeJson,
+                filters_json = :filtersJson,
                 updated_at = :updatedAt
             WHERE id = :id
             """.trimIndent(),
@@ -111,6 +136,8 @@ class PageRepository(
             .param("title", nextTitle)
             .param("description", description ?: current.description)
             .param("icon", icon ?: current.icon)
+            .param("timeRangeJson", serializeTimeRange(timeRange ?: current.timeRange))
+            .param("filtersJson", serializeFilters(filters ?: current.filters))
             .param("updatedAt", now.toString())
             .update()
         return findById(id)
@@ -145,6 +172,9 @@ class PageRepository(
         }
     }
 
+    fun updateState(id: String, timeRange: PageTimeRange?, filters: List<PageFilterState>): DashboardPage? =
+        update(id = id, title = null, description = null, icon = null, timeRange = timeRange, filters = filters)
+
     private fun nextSortOrder(): Int =
         jdbcClient.sql("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM dashboard_pages")
             .query(Int::class.java)
@@ -174,4 +204,18 @@ class PageRepository(
         }
         return spec.query(Int::class.java).single() > 0
     }
+
+    private fun serializeTimeRange(value: PageTimeRange?): String? =
+        value?.let(objectMapper::writeValueAsString)
+
+    private fun parseTimeRange(value: String?): PageTimeRange? =
+        value?.takeIf { it.isNotBlank() }?.let { objectMapper.readValue(it, PageTimeRange::class.java) }
+
+    private fun serializeFilters(value: List<PageFilterState>): String =
+        objectMapper.writeValueAsString(value)
+
+    private fun parseFilters(value: String?): List<PageFilterState> =
+        value?.takeIf { it.isNotBlank() }?.let {
+            objectMapper.readValue(it, objectMapper.typeFactory.constructCollectionType(List::class.java, PageFilterState::class.java))
+        } ?: emptyList()
 }

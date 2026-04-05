@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_PORT="${SERVER_PORT:-8086}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${FRONTEND_PORT:-4173}"
+FRONTEND_STRICT_PORT="${FRONTEND_STRICT_PORT:-1}"
 API_PROXY_TARGET="${VITE_API_PROXY_TARGET:-http://${FRONTEND_HOST}:${BACKEND_PORT}}"
 
 (
@@ -20,4 +21,9 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$ROOT_DIR/frontend"
-VITE_API_PROXY_TARGET="$API_PROXY_TARGET" npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT"
+VITE_ARGS=(--host "$FRONTEND_HOST" --port "$FRONTEND_PORT")
+if [[ "$FRONTEND_STRICT_PORT" == "1" || "$FRONTEND_STRICT_PORT" == "true" ]]; then
+  VITE_ARGS+=(--strictPort)
+fi
+
+VITE_API_PROXY_TARGET="$API_PROXY_TARGET" npm run dev -- "${VITE_ARGS[@]}"

@@ -1,7 +1,8 @@
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
+import { BarChart, HeatmapChart, LineChart, PieChart } from 'echarts/charts'
 import {
+  CalendarComponent,
   DataZoomComponent,
   GridComponent,
   LegendComponent,
@@ -14,7 +15,11 @@ import type { AnalyticsCompareResponse, AnalyticsQueryResponse, Annotation, Metr
 
 use([
   CanvasRenderer,
+  BarChart,
+  HeatmapChart,
   LineChart,
+  PieChart,
+  CalendarComponent,
   GridComponent,
   TooltipComponent,
   LegendComponent,

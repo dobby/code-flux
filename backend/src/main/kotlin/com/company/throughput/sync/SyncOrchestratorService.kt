@@ -28,6 +28,11 @@ data class SyncRunSummary(
     val status: String,
 )
 
+private data class RepoSyncResult(
+    val commitCount: Int,
+    val fileCount: Int,
+)
+
 @Service
 class SyncOrchestratorService(
     private val resolvedDashboardConfig: ResolvedDashboardConfig,
@@ -56,6 +61,8 @@ class SyncOrchestratorService(
             return SyncRunSummary(syncRunId = syncRunId, status = "REJECTED")
         }
 
+        syncStateRepository.seedRunEvents(syncRunId, enabledRepos.map(RepoConfig::id), jiraEnabled = true)
+
         executor.submit {
             try {
                 executeIncrementalSync(syncRunId)
@@ -79,23 +86,63 @@ class SyncOrchestratorService(
         var cancelled = false
         val enabledRepos = resolvedDashboardConfig.repos.filter { it.enabled }
 
-        enabledRepos.forEach { repo ->
+        enabledRepos.forEachIndexed { index, repo ->
             if (syncRuntimeState.isStopRequested()) {
                 cancelled = true
-                return@forEach
+                return@forEachIndexed
             }
 
             syncRuntimeState.markRepoStarted(repo.id)
             try {
-                processRepo(syncRunId, repo)
+                syncStateRepository.updateRunEvent(
+                    eventKey = "repo:${repo.id}",
+                    status = "RUNNING",
+                    detail = "Fetching repository data",
+                    progressPercent = syncRuntimeState.currentStatus()?.progressPercent,
+                )
+                val result = processRepo(syncRunId, repo)
+                syncStateRepository.updateRunEvent(
+                    eventKey = "repo:${repo.id}",
+                    status = "COMPLETED",
+                    detail = "Indexed ${result.commitCount} commits across ${result.fileCount} files",
+                    progressPercent = syncRuntimeState.currentStatus()?.progressPercent,
+                    finishedAt = java.time.Instant.now(),
+                )
             } catch (exception: Exception) {
                 hadFailures = true
                 logger.error(exception) { "Failed to sync repo ${repo.id}" }
                 syncStateRepository.markRepoFailure(repo.id, exception.message ?: "Unknown sync failure")
+                syncStateRepository.updateRunEvent(
+                    eventKey = "repo:${repo.id}",
+                    status = "FAILED",
+                    detail = exception.message ?: "Unknown sync failure",
+                    progressPercent = syncRuntimeState.currentStatus()?.progressPercent,
+                    finishedAt = java.time.Instant.now(),
+                )
             } finally {
                 syncRuntimeState.markRepoCompleted()
             }
+
+            if (cancelled || syncRuntimeState.isStopRequested()) {
+                enabledRepos.drop(index + 1).forEach { remainingRepo ->
+                    syncStateRepository.updateRunEvent(
+                        eventKey = "repo:${remainingRepo.id}",
+                        status = "SKIPPED",
+                        detail = "Skipped because sync was stopped",
+                        progressPercent = syncRuntimeState.currentStatus()?.progressPercent,
+                        finishedAt = java.time.Instant.now(),
+                    )
+                }
+            }
         }
+
+        syncStateRepository.updateRunEvent(
+            eventKey = "jira:enrichment",
+            status = "SKIPPED",
+            detail = "Jira enrichment is not yet wired into the sync pipeline",
+            progressPercent = 100,
+            finishedAt = java.time.Instant.now(),
+        )
 
         val status = when {
             cancelled || syncRuntimeState.isStopRequested() -> "CANCELLED"
@@ -107,12 +154,14 @@ class SyncOrchestratorService(
         return SyncRunSummary(syncRunId = syncRunId, status = status)
     }
 
-    private fun processRepo(syncRunId: Long, repo: RepoConfig) {
+    private fun processRepo(syncRunId: Long, repo: RepoConfig): RepoSyncResult {
         val mirrorPath = mirrorSyncService.ensureMirror(repo)
         val refs = gitHistoryExtractor.resolveRefs(repo, mirrorPath)
         val commitShas = gitHistoryExtractor.enumerateCommitShas(mirrorPath, refs)
         val impactedDays = linkedSetOf<LocalDate>()
         val processedCommitShas = linkedSetOf<String>()
+        var commitCount = 0
+        var fileCount = 0
 
         commitShas.forEach { commitSha ->
             if (!processedCommitShas.add(commitSha)) {
@@ -155,6 +204,7 @@ class SyncOrchestratorService(
                         syncRunId = syncRunId,
                     ),
                 )
+                commitCount += 1
             } catch (_: DataIntegrityViolationException) {
                 logger.warn { "Skipping duplicate commit ${metadata.commitSha} for repo ${repo.id}" }
                 return@forEach
@@ -162,6 +212,7 @@ class SyncOrchestratorService(
 
             val classifiedFiles = gitHistoryExtractor.readFileStats(mirrorPath, commitSha)
                 .map { classificationService.classify(repo, it) }
+            fileCount += classifiedFiles.size
             rawFactRepository.insertCommitFiles(
                 repoId = repo.id,
                 commitSha = metadata.commitSha,
@@ -183,5 +234,6 @@ class SyncOrchestratorService(
 
         aggregationService.rebuildImpacted(repo.id, impactedDays)
         syncStateRepository.markRepoSuccess(repo.id, syncRunId, commitShas.lastOrNull())
+        return RepoSyncResult(commitCount = commitCount, fileCount = fileCount)
     }
 }

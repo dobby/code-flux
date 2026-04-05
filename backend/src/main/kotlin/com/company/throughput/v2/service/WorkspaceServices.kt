@@ -2,6 +2,8 @@ package com.company.throughput.v2.service
 
 import com.company.throughput.v2.model.AddPageWidgetRequest
 import com.company.throughput.v2.model.AnnotationV2
+import com.company.throughput.v2.model.AnnotationCommitRef
+import com.company.throughput.v2.model.AnnotationTypeV2
 import com.company.throughput.v2.model.CreateAnnotationV2Request
 import com.company.throughput.v2.model.CreatePageRequest
 import com.company.throughput.v2.model.CreateWidgetDefinitionRequest
@@ -19,6 +21,7 @@ import com.company.throughput.v2.repo.AnnotationV2Repository
 import com.company.throughput.v2.repo.JiraSettingsRepository
 import com.company.throughput.v2.repo.PageRepository
 import com.company.throughput.v2.repo.PageWidgetInstanceRepository
+import com.company.throughput.v2.repo.WidgetUsageMetadata
 import com.company.throughput.v2.repo.WidgetDefinitionRepository
 import com.company.throughput.v2.repo.newId
 import org.springframework.stereotype.Service
@@ -41,6 +44,8 @@ class PageService(
         title = request.title.trim(),
         description = request.description?.trim()?.ifBlank { null },
         icon = request.icon?.trim()?.ifBlank { null },
+        timeRange = request.timeRange,
+        filters = request.filters,
     )
 
     fun update(pageId: String, request: UpdatePageRequest): DashboardPage =
@@ -50,8 +55,13 @@ class PageService(
                 title = request.title?.trim()?.ifBlank { null },
                 description = request.description?.trim()?.ifBlank { null },
                 icon = request.icon?.trim()?.ifBlank { null },
+                timeRange = request.timeRange,
+                filters = request.filters,
             ),
         ) { "PAGE_NOT_FOUND: $pageId" }
+
+    fun updateState(pageId: String, timeRange: com.company.throughput.v2.model.PageTimeRange?, filters: List<com.company.throughput.v2.model.PageFilterState>): DashboardPage =
+        requireNotNull(pageRepository.updateState(pageId, timeRange, filters)) { "PAGE_NOT_FOUND: $pageId" }
 
     @Transactional
     fun duplicate(pageId: String): DashboardPage {
@@ -60,6 +70,8 @@ class PageService(
             title = "${page.title} Copy",
             description = page.description,
             icon = page.icon,
+            timeRange = page.timeRange,
+            filters = page.filters,
         )
         pageWidgetInstanceRepository.listForPage(pageId).forEach { instance ->
             pageWidgetInstanceRepository.create(
@@ -163,6 +175,7 @@ class WidgetCatalogService(
     private val widgetDefinitionRepository: WidgetDefinitionRepository,
 ) {
     fun list(includeArchived: Boolean = false): List<WidgetDefinition> = widgetDefinitionRepository.list(includeArchived)
+        .map { it.withUsage(widgetDefinitionRepository.usageMetadata(it.id)) }
 
     fun summary(includeArchived: Boolean = false): List<WidgetCatalogSummaryDto> =
         list(includeArchived).map {
@@ -176,11 +189,14 @@ class WidgetCatalogService(
                 datasetKey = it.datasetKey,
                 isSystem = it.isSystem,
                 archived = it.archived,
+                usageCount = it.usageCount,
+                usedOnPages = it.usedOnPages,
             )
         }
 
     fun get(id: String): WidgetDefinition =
         requireNotNull(widgetDefinitionRepository.findById(id)) { "WIDGET_NOT_FOUND: $id" }
+            .withUsage(widgetDefinitionRepository.usageMetadata(id))
 
     fun create(request: CreateWidgetDefinitionRequest): WidgetDefinition = widgetDefinitionRepository.create(
         title = request.title.trim(),
@@ -190,7 +206,7 @@ class WidgetCatalogService(
         datasetKey = request.datasetKey,
         querySpec = request.querySpec,
         vizSpec = request.vizSpec,
-    )
+    ).withUsage(WidgetUsageMetadata(usageCount = 0, usedOnPages = emptyList()))
 
     fun update(widgetId: String, request: UpdateWidgetDefinitionRequest): WidgetDefinition =
         requireNotNull(
@@ -204,13 +220,18 @@ class WidgetCatalogService(
                 vizSpec = request.vizSpec,
             ),
         ) { "WIDGET_NOT_FOUND: $widgetId" }
+            .withUsage(widgetDefinitionRepository.usageMetadata(widgetId))
 
     fun duplicate(widgetId: String): WidgetDefinition =
         requireNotNull(widgetDefinitionRepository.duplicate(widgetId)) { "WIDGET_NOT_FOUND: $widgetId" }
+            .withUsage(WidgetUsageMetadata(usageCount = 0, usedOnPages = emptyList()))
 
     fun archive(widgetId: String) {
         require(widgetDefinitionRepository.archive(widgetId)) { "WIDGET_NOT_FOUND: $widgetId" }
     }
+
+    private fun WidgetDefinition.withUsage(usage: WidgetUsageMetadata): WidgetDefinition =
+        copy(usageCount = usage.usageCount, usedOnPages = usage.usedOnPages)
 }
 
 @Service
@@ -221,35 +242,55 @@ class AnnotationV2Service(
         annotationRepository.list(pageWidgetInstanceId, dateFrom, dateTo)
 
     fun create(request: CreateAnnotationV2Request): AnnotationV2 =
-        annotationRepository.create(
-            AnnotationV2(
-                id = newId("annotation"),
-                targetKind = request.targetKind,
-                pageWidgetInstanceId = request.pageWidgetInstanceId,
-                scopeDate = request.scopeDate,
-                xValue = request.xValue,
-                yValue = request.yValue,
-                title = request.title.trim(),
-                body = request.body?.trim()?.ifBlank { null },
-                color = request.color?.trim()?.ifBlank { null },
-                scope = request.scope,
-                createdAt = Instant.now(),
-                updatedAt = Instant.now(),
-            ),
-        )
+        annotationRepository.create(buildAnnotation(request))
 
     fun update(annotationId: String, request: UpdateAnnotationV2Request): AnnotationV2 =
         requireNotNull(
             annotationRepository.update(
                 id = annotationId,
-                title = request.title.trim(),
+                annotationType = request.annotationType,
+                name = request.name?.trim()?.ifBlank { null },
+                description = request.description?.trim()?.ifBlank { null },
+                title = request.title?.trim()?.ifBlank { null },
                 body = request.body?.trim()?.ifBlank { null },
                 color = request.color?.trim()?.ifBlank { null },
+                tags = request.tags?.map(String::trim)?.filter(String::isNotBlank),
+                commitRefs = request.commitRefs,
             ),
         ) { "ANNOTATION_NOT_FOUND: $annotationId" }
 
     fun delete(annotationId: String) {
         require(annotationRepository.delete(annotationId)) { "ANNOTATION_NOT_FOUND: $annotationId" }
+    }
+
+    private fun buildAnnotation(request: CreateAnnotationV2Request): AnnotationV2 {
+        val trimmedTitle = request.title?.trim()?.ifBlank { null }
+        val trimmedName = request.name?.trim()?.ifBlank { null }
+        val trimmedDescription = request.description?.trim()?.ifBlank { null }
+        val trimmedBody = request.body?.trim()?.ifBlank { null }
+        val effectiveTitle = trimmedTitle ?: trimmedName ?: trimmedDescription ?: trimmedBody ?: request.annotationType.name.lowercase()
+        val effectiveName = trimmedName ?: trimmedTitle ?: effectiveTitle
+        val effectiveDescription = trimmedDescription ?: trimmedBody
+
+        return AnnotationV2(
+            id = newId("annotation"),
+            targetKind = request.targetKind,
+            pageWidgetInstanceId = request.pageWidgetInstanceId,
+            scopeDate = request.scopeDate,
+            xValue = request.xValue,
+            yValue = request.yValue,
+            annotationType = request.annotationType,
+            name = effectiveName,
+            description = effectiveDescription,
+            title = effectiveTitle,
+            body = trimmedBody ?: trimmedDescription,
+            color = request.color?.trim()?.ifBlank { null },
+            tags = request.tags.map(String::trim).filter(String::isNotBlank),
+            commitRefs = request.commitRefs,
+            scope = request.scope,
+            createdAt = Instant.now(),
+            updatedAt = Instant.now(),
+        )
     }
 }
 

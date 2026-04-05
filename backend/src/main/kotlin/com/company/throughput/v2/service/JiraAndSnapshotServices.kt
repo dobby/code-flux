@@ -388,18 +388,23 @@ class V2SeedRunner(
     private val pageService: PageService,
 ) : ApplicationRunner {
     override fun run(args: org.springframework.boot.ApplicationArguments) {
-        if (widgetCatalogService.list(includeArchived = true).isEmpty()) {
-            seedWidgets()
-        }
-        if (pageService.list(includeArchived = true).isEmpty()) {
-            seedPages()
-        }
+        val widgetsByTitle = seedWidgets()
+        seedPages(widgetsByTitle)
     }
 
-    private fun seedWidgets() {
-        widgetCatalogService.create(
+    private fun seedWidgets(): Map<String, com.company.throughput.v2.model.WidgetDefinition> {
+        fun ensureWidget(
+            title: String,
+            request: com.company.throughput.v2.model.CreateWidgetDefinitionRequest,
+        ): com.company.throughput.v2.model.WidgetDefinition {
+            return widgetCatalogService.list(includeArchived = true).firstOrNull { it.title == title }
+                ?: widgetCatalogService.create(request)
+        }
+
+        ensureWidget(
+            "Lines Added Over Time",
             com.company.throughput.v2.model.CreateWidgetDefinitionRequest(
-                title = "Daily lines added",
+                title = "Lines Added Over Time",
                 description = "Throughput over time by repository.",
                 tags = listOf("throughput", "timeseries"),
                 kind = com.company.throughput.v2.model.WidgetKind.TIME_SERIES,
@@ -413,7 +418,70 @@ class V2SeedRunner(
                 vizSpec = com.company.throughput.v2.model.WidgetVizSpec(chartType = "line", emptyStateMessage = "No throughput data"),
             ),
         )
-        widgetCatalogService.create(
+        ensureWidget(
+            "Commits by Author",
+            com.company.throughput.v2.model.CreateWidgetDefinitionRequest(
+                title = "Commits by Author",
+                description = "Top contributors over the selected period.",
+                tags = listOf("throughput", "contributors"),
+                kind = com.company.throughput.v2.model.WidgetKind.DISTRIBUTION,
+                datasetKey = com.company.throughput.v2.model.DatasetKey.THROUGHPUT_DAILY,
+                querySpec = com.company.throughput.v2.model.WidgetQuerySpec(
+                    dataset = com.company.throughput.v2.model.DatasetKey.THROUGHPUT_DAILY,
+                    measure = com.company.throughput.v2.model.MeasureSpec("commits_count", com.company.throughput.v2.model.AggregationType.SUM),
+                    groupBy = listOf("author"),
+                    limit = 8,
+                ),
+                vizSpec = com.company.throughput.v2.model.WidgetVizSpec(chartType = "bar", emptyStateMessage = "No contributor activity"),
+            ),
+        )
+        ensureWidget(
+            "Commit Count",
+            com.company.throughput.v2.model.CreateWidgetDefinitionRequest(
+                title = "Commit Count",
+                description = "Total commits in the selected period.",
+                tags = listOf("throughput", "metric"),
+                kind = com.company.throughput.v2.model.WidgetKind.METRIC_CARD,
+                datasetKey = com.company.throughput.v2.model.DatasetKey.THROUGHPUT_DAILY,
+                querySpec = com.company.throughput.v2.model.WidgetQuerySpec(
+                    dataset = com.company.throughput.v2.model.DatasetKey.THROUGHPUT_DAILY,
+                    measure = com.company.throughput.v2.model.MeasureSpec("commits_count", com.company.throughput.v2.model.AggregationType.SUM),
+                ),
+                vizSpec = com.company.throughput.v2.model.WidgetVizSpec(emptyStateMessage = "No commit activity"),
+            ),
+        )
+        ensureWidget(
+            "Active Contributors",
+            com.company.throughput.v2.model.CreateWidgetDefinitionRequest(
+                title = "Active Contributors",
+                description = "Contributor activity proxy across the selected period.",
+                tags = listOf("throughput", "metric"),
+                kind = com.company.throughput.v2.model.WidgetKind.METRIC_CARD,
+                datasetKey = com.company.throughput.v2.model.DatasetKey.THROUGHPUT_DAILY,
+                querySpec = com.company.throughput.v2.model.WidgetQuerySpec(
+                    dataset = com.company.throughput.v2.model.DatasetKey.THROUGHPUT_DAILY,
+                    measure = com.company.throughput.v2.model.MeasureSpec("net_lines", com.company.throughput.v2.model.AggregationType.SUM),
+                ),
+                vizSpec = com.company.throughput.v2.model.WidgetVizSpec(emptyStateMessage = "No contributor activity"),
+            ),
+        )
+        ensureWidget(
+            "Files Changed",
+            com.company.throughput.v2.model.CreateWidgetDefinitionRequest(
+                title = "Files Changed",
+                description = "Files touched in the selected period.",
+                tags = listOf("throughput", "metric"),
+                kind = com.company.throughput.v2.model.WidgetKind.METRIC_CARD,
+                datasetKey = com.company.throughput.v2.model.DatasetKey.THROUGHPUT_DAILY,
+                querySpec = com.company.throughput.v2.model.WidgetQuerySpec(
+                    dataset = com.company.throughput.v2.model.DatasetKey.THROUGHPUT_DAILY,
+                    measure = com.company.throughput.v2.model.MeasureSpec("files_changed_count", com.company.throughput.v2.model.AggregationType.SUM),
+                ),
+                vizSpec = com.company.throughput.v2.model.WidgetVizSpec(emptyStateMessage = "No file changes"),
+            ),
+        )
+        ensureWidget(
+            "Current language mix",
             com.company.throughput.v2.model.CreateWidgetDefinitionRequest(
                 title = "Current language mix",
                 description = "Current repository composition by language.",
@@ -429,7 +497,25 @@ class V2SeedRunner(
                 vizSpec = com.company.throughput.v2.model.WidgetVizSpec(chartType = "donut", emptyStateMessage = "Run a snapshot to populate current inventory"),
             ),
         )
-        widgetCatalogService.create(
+        ensureWidget(
+            "Current category mix",
+            com.company.throughput.v2.model.CreateWidgetDefinitionRequest(
+                title = "Current category mix",
+                description = "Current repository composition by code category.",
+                tags = listOf("repo-state", "distribution"),
+                kind = com.company.throughput.v2.model.WidgetKind.DISTRIBUTION,
+                datasetKey = com.company.throughput.v2.model.DatasetKey.FILE_INVENTORY_CURRENT,
+                querySpec = com.company.throughput.v2.model.WidgetQuerySpec(
+                    dataset = com.company.throughput.v2.model.DatasetKey.FILE_INVENTORY_CURRENT,
+                    measure = com.company.throughput.v2.model.MeasureSpec("lines_count", com.company.throughput.v2.model.AggregationType.SUM),
+                    groupBy = listOf("category"),
+                    limit = 8,
+                ),
+                vizSpec = com.company.throughput.v2.model.WidgetVizSpec(chartType = "donut", emptyStateMessage = "Run a snapshot to populate current inventory"),
+            ),
+        )
+        ensureWidget(
+            "Day explorer",
             com.company.throughput.v2.model.CreateWidgetDefinitionRequest(
                 title = "Day explorer",
                 description = "Context panel for the selected throughput day.",
@@ -440,9 +526,79 @@ class V2SeedRunner(
                 vizSpec = com.company.throughput.v2.model.WidgetVizSpec(emptyStateMessage = "Select a day from a compatible chart to inspect activity"),
             ),
         )
+        return widgetCatalogService.list(includeArchived = true).associateBy { it.title }
     }
 
-    private fun seedPages() {
-        pageService.create(com.company.throughput.v2.model.CreatePageRequest(title = "Weekly repo review", description = "Seeded V2 workspace page"))
+    private fun seedPages(widgetsByTitle: Map<String, com.company.throughput.v2.model.WidgetDefinition>) {
+        val existingPages = pageService.list(includeArchived = true)
+        val placeholderPage = existingPages.firstOrNull { it.title == "Weekly repo review" }
+
+        fun ensurePage(
+            title: String,
+            description: String,
+            sortPreset: String = "last_14_days",
+        ): com.company.throughput.v2.model.DashboardPage {
+            val existing = pageService.list(includeArchived = true).firstOrNull { it.title == title }
+            if (existing != null) {
+                return existing
+            }
+            return pageService.create(
+                com.company.throughput.v2.model.CreatePageRequest(
+                    title = title,
+                    description = description,
+                    timeRange = com.company.throughput.v2.model.PageTimeRange(preset = sortPreset),
+                ),
+            )
+        }
+
+        val existingTeamVelocity = existingPages.firstOrNull { it.title == "Team Velocity" }
+        val teamVelocityPage = when {
+            existingTeamVelocity != null -> {
+                if (placeholderPage != null && placeholderPage.id != existingTeamVelocity.id && !placeholderPage.archived) {
+                    pageService.archive(placeholderPage.id)
+                }
+                existingTeamVelocity
+            }
+
+            placeholderPage != null -> {
+                pageService.update(
+                    placeholderPage.id,
+                    com.company.throughput.v2.model.UpdatePageRequest(
+                        title = "Team Velocity",
+                        description = "Track output and contribution volume across your repos.",
+                        timeRange = com.company.throughput.v2.model.PageTimeRange(preset = "last_14_days"),
+                        filters = emptyList(),
+                    ),
+                )
+            }
+
+            else -> ensurePage("Team Velocity", "Track output and contribution volume across your repos.")
+        }
+
+        ensurePage("Sprint Overview", "Keep a tight read on delivery signals for the current sprint.")
+        ensurePage("Code Quality", "Watch churn, shape, and code health signals over time.")
+
+        if (pageService.listResolvedWidgets(teamVelocityPage.id).isEmpty()) {
+            val layouts = listOf(
+                Triple("Lines Added Over Time", com.company.throughput.v2.model.LayoutSpec(x = 0, y = 0, w = 6, h = 8), null),
+                Triple("Commits by Author", com.company.throughput.v2.model.LayoutSpec(x = 6, y = 0, w = 6, h = 8), null),
+                Triple("Commit Count", com.company.throughput.v2.model.LayoutSpec(x = 0, y = 8, w = 4, h = 4), null),
+                Triple("Active Contributors", com.company.throughput.v2.model.LayoutSpec(x = 4, y = 8, w = 4, h = 4), null),
+                Triple("Files Changed", com.company.throughput.v2.model.LayoutSpec(x = 8, y = 8, w = 4, h = 4), null),
+            )
+
+            layouts.forEach { (title, layout, descriptionOverride) ->
+                val widget = requireNotNull(widgetsByTitle[title]) { "Missing seeded widget: $title" }
+                pageService.addWidget(
+                    teamVelocityPage.id,
+                    com.company.throughput.v2.model.AddPageWidgetRequest(
+                        widgetDefinitionId = widget.id,
+                        kind = widget.kind,
+                        layout = layout,
+                        descriptionOverride = descriptionOverride,
+                    ),
+                )
+            }
+        }
     }
 }

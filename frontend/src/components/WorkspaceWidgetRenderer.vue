@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
+import '../lib/chart'
 import type { AnnotationV2, DayDrilldownResponse, PageWidgetResolved, QueryExecutionResponse } from '../types/workspace'
 
 const props = defineProps<{
@@ -11,6 +12,7 @@ const props = defineProps<{
   annotations?: AnnotationV2[]
   drilldown?: DayDrilldownResponse | null
   editMode: boolean
+  presentation?: 'default' | 'preview'
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +23,26 @@ const markdown = new MarkdownIt({
   html: false,
   linkify: true,
   breaks: true,
+})
+
+const isPreview = computed(() => props.presentation === 'preview')
+const metricFootnote = computed(() => props.widget.effectiveDescription || 'Selected range')
+const metricValue = computed(() => {
+  const totals = props.data?.totals ?? {}
+  const field = props.widget.effectiveQuery?.measure?.field ?? ''
+  const lookup: Record<string, string> = {
+    lines_added: 'linesAdded',
+    lines_removed: 'linesRemoved',
+    net_lines: 'netLines',
+    commit_count: 'commitCount',
+    file_count: 'fileCount',
+  }
+  const key = lookup[field]
+  if (key && typeof totals[key] === 'number') {
+    return totals[key]
+  }
+  const fallback = Object.values(totals).find((value) => typeof value === 'number')
+  return typeof fallback === 'number' ? fallback : 0
 })
 
 const chartOption = computed(() => {
@@ -41,19 +63,33 @@ const chartOption = computed(() => {
     }
     return {
       tooltip: { trigger: 'axis' },
-      legend: { show: props.widget.effectiveViz.showLegend ?? true },
-      grid: { left: 24, right: 16, top: 30, bottom: 24, containLabel: true },
-      xAxis: { type: 'category' },
-      yAxis: { type: 'value', name: props.widget.effectiveViz.yAxisLabel ?? undefined },
+      legend: { show: false },
+      grid: { left: isPreview.value ? 12 : 6, right: isPreview.value ? 12 : 8, top: isPreview.value ? 20 : 8, bottom: isPreview.value ? 20 : 8, containLabel: true },
+      xAxis: {
+        type: 'category',
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: 'value',
+        name: props.widget.effectiveViz.yAxisLabel ?? undefined,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        splitLine: { lineStyle: { color: 'rgba(191, 203, 227, 0.55)' } },
+      },
       series: Array.from(grouped.entries()).map(([label, points]) => ({
         name: label,
         type: props.widget.effectiveViz.chartType === 'bar' ? 'bar' : 'line',
         smooth: props.widget.effectiveViz.chartType !== 'bar',
-        areaStyle: props.widget.effectiveViz.chartType === 'area' ? {} : undefined,
-        showSymbol: true,
+        areaStyle: props.widget.effectiveViz.chartType === 'area' ? { color: 'rgba(99, 102, 241, 0.1)' } : undefined,
+        showSymbol: false,
         symbol: 'circle',
-        symbolSize: 10,
-        lineStyle: { width: 3 },
+        symbolSize: isPreview.value ? 7 : 0,
+        lineStyle: { width: isPreview.value ? 2.5 : 2, color: '#6366f1' },
+        itemStyle: { color: '#6366f1' },
         data: points,
         markLine: props.annotations?.length
           ? {
@@ -80,7 +116,7 @@ const chartOption = computed(() => {
     if ((props.widget.effectiveViz.chartType ?? 'bar') === 'donut' || props.widget.effectiveViz.chartType === 'pie') {
       return {
         tooltip: { trigger: 'item' },
-        legend: { show: true, bottom: 0 },
+        legend: { show: false },
         series: [
           {
             type: 'pie',
@@ -89,15 +125,28 @@ const chartOption = computed(() => {
           },
         ],
       }
-    }
+        }
     return {
       tooltip: { trigger: 'axis' },
-      grid: { left: 24, right: 16, top: 24, bottom: 24, containLabel: true },
-      xAxis: { type: 'value' },
-      yAxis: { type: 'category', data: points.map((point) => point.name) },
+      grid: { left: isPreview.value ? 12 : 44, right: isPreview.value ? 12 : 6, top: isPreview.value ? 18 : 8, bottom: isPreview.value ? 18 : 8, containLabel: true },
+      xAxis: {
+        type: 'value',
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: 'category',
+        data: points.map((point) => point.name),
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { color: '#7b88a5', fontSize: 11 },
+      },
       series: [
         {
           type: 'bar',
+          itemStyle: { color: '#6366f1', borderRadius: 4 },
           data: points.map((point) => point.value),
         },
       ],
@@ -117,9 +166,9 @@ const chartOption = computed(() => {
         bottom: 0,
       },
       calendar: {
-        top: 24,
-        left: 24,
-        right: 24,
+        top: isPreview.value ? 14 : 24,
+        left: isPreview.value ? 14 : 24,
+        right: isPreview.value ? 14 : 24,
         cellSize: ['auto', 18],
         range: data.length ? String(data[0][0]).slice(0, 4) : new Date().getFullYear(),
       },
@@ -160,26 +209,10 @@ function handleChartClick(event: { data?: unknown; name?: string; seriesName?: s
   })
 }
 
-function inspectMostRecentPoint() {
-  if (props.editMode || props.widget.instance.kind !== 'time_series') {
-    return
-  }
-  const rows = props.data?.rows ?? []
-  const lastRow = [...rows].reverse().find((row) => Number(row.value ?? 0) > 0) ?? rows.at(-1)
-  const selectedDate = String(lastRow?.bucket ?? '')
-  if (!selectedDate) {
-    return
-  }
-  emit('point-click', {
-    selectedDate,
-    seriesField: props.widget.effectiveQuery?.groupBy[0],
-    seriesValue: lastRow?.group_label ? String(lastRow.group_label) : undefined,
-  })
-}
 </script>
 
 <template>
-  <div class="widget-renderer">
+  <div class="widget-renderer" :class="{ 'widget-renderer--preview': isPreview }">
     <div v-if="widget.instance.kind === 'header_block'" class="content-block content-block--header">
       <h2>{{ widget.effectiveTitle }}</h2>
       <p v-if="widget.effectiveViz.body">{{ widget.effectiveViz.body }}</p>
@@ -189,9 +222,10 @@ function inspectMostRecentPoint() {
 
     <div v-else-if="widget.instance.kind === 'divider_block'" class="content-block content-block--divider" />
 
-    <div v-else-if="widget.instance.kind === 'metric_card'" class="metric-card">
-      <span>{{ widget.effectiveDescription || 'Current value' }}</span>
-      <strong>{{ Number(data?.totals.value ?? 0).toLocaleString() }}</strong>
+    <div v-else-if="widget.instance.kind === 'metric_card'" class="metric-card" :class="{ 'metric-card--preview': isPreview }">
+      <span class="metric-card__title">{{ widget.effectiveTitle }}</span>
+      <strong>{{ Number(metricValue).toLocaleString() }}</strong>
+      <p class="metric-card__footnote">{{ metricFootnote }}</p>
     </div>
 
     <div v-else-if="widget.instance.kind === 'data_table'" class="widget-table">
@@ -209,7 +243,7 @@ function inspectMostRecentPoint() {
       </table>
     </div>
 
-    <div v-else-if="widget.instance.kind === 'day_explorer'" class="day-explorer">
+    <div v-else-if="widget.instance.kind === 'day_explorer'" class="day-explorer" :class="{ 'day-explorer--preview': isPreview }">
       <div v-if="!drilldown" class="workspace-empty-state workspace-empty-state--compact">
         <strong>{{ widget.effectiveViz.emptyStateMessage || 'Select a day from a compatible chart.' }}</strong>
         <p>The selected day context will appear here and stay visible while you review the rest of the page.</p>
@@ -243,7 +277,7 @@ function inspectMostRecentPoint() {
           <div>
             <h3>Commits</h3>
             <ul>
-              <li v-for="commit in drilldown.commits.slice(0, 6)" :key="commit.commitSha">{{ commit.commitSha.slice(0, 8) }} · {{ commit.subject }}</li>
+              <li v-for="commit in drilldown.commits.slice(0, 6)" :key="commit.commitSha">{{ commit.commitSha.slice(0, 8) }} - {{ commit.subject }}</li>
             </ul>
           </div>
         </div>
@@ -260,15 +294,6 @@ function inspectMostRecentPoint() {
         :option="chartOption"
         @click="(event: unknown) => handleChartClick(event as { data?: unknown; name?: string; seriesName?: string })"
       />
-      <button
-        v-if="widget.instance.kind === 'time_series' && !editMode"
-        class="button button--ghost widget-chart__inspect"
-        type="button"
-        :data-testid="`chart-inspect-${widget.instance.id}`"
-        @click="inspectMostRecentPoint"
-      >
-        Inspect latest day
-      </button>
     </div>
 
     <div
@@ -281,3 +306,191 @@ function inspectMostRecentPoint() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.widget-renderer {
+  display: grid;
+  gap: 12px;
+}
+
+.widget-renderer--preview {
+  gap: 14px;
+}
+
+.metric-card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.metric-card__title {
+  color: #4f5d78;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.metric-card strong {
+  color: #0f172a;
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.metric-card__footnote {
+  margin: auto 0 0;
+  color: #94a0b8;
+  font-size: 11px;
+}
+
+.metric-card--preview {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.metric-card--preview strong {
+  font-size: 44px;
+}
+
+.content-block--header,
+.content-block--markdown,
+.content-block--divider,
+.widget-table,
+.day-explorer,
+.widget-chart {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.content-block--header {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+}
+
+.content-block--header h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.content-block--header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.content-block--markdown {
+  padding: 0;
+  color: #334155;
+  line-height: 1.55;
+}
+
+.content-block--divider {
+  height: 1px;
+  min-height: 1px;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.widget-table {
+  overflow: hidden;
+}
+
+.widget-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.widget-table th,
+.widget-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  color: #334155;
+  text-align: left;
+}
+
+.widget-table th {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.day-explorer {
+  display: grid;
+  gap: 14px;
+  padding: 0;
+}
+
+.day-explorer--preview {
+  gap: 12px;
+  padding: 14px;
+}
+
+.day-explorer__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.day-explorer__lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.day-explorer__lists h3 {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.day-explorer__lists ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.widget-chart {
+  position: relative;
+  padding: 0;
+  min-height: 210px;
+  overflow: hidden;
+}
+
+.widget-chart--preview {
+  min-height: 280px;
+}
+
+.widget-chart :deep(.echarts),
+.widget-chart :deep(canvas),
+.widget-chart :deep(svg) {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.workspace-empty-state--compact {
+  padding: 18px;
+}
+
+.workspace-empty-state--compact strong {
+  color: #0f172a;
+}
+
+.workspace-empty-state--compact p {
+  margin: 6px 0 0;
+  color: #64748b;
+}
+</style>

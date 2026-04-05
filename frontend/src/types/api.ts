@@ -144,6 +144,18 @@ export interface SyncRepoStatus {
   lastErrorMessage: string | null
 }
 
+export interface SyncLogEntry {
+  eventKey: string
+  sourceKind: string
+  repoId: string | null
+  label: string
+  detail: string | null
+  status: string
+  startedAt: string | null
+  finishedAt: string | null
+  progressPercent: number | null
+}
+
 export interface SyncStatusResponse {
   running: boolean
   current: {
@@ -163,6 +175,7 @@ export interface SyncStatusResponse {
     message: string | null
   } | null
   repos: SyncRepoStatus[]
+  logEntries: SyncLogEntry[]
 }
 
 export interface FilterOptionsResponse {

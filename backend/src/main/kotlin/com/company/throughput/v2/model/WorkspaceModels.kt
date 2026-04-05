@@ -134,6 +134,20 @@ enum class SortDirection {
     DESC,
 }
 
+enum class AnnotationTypeV2 {
+    @JsonProperty("feature")
+    FEATURE,
+
+    @JsonProperty("incident")
+    INCIDENT,
+
+    @JsonProperty("project")
+    PROJECT,
+
+    @JsonProperty("note")
+    NOTE,
+}
+
 enum class AnnotationTargetKind {
     @JsonProperty("global_date")
     GLOBAL_DATE,
@@ -141,6 +155,21 @@ enum class AnnotationTargetKind {
     @JsonProperty("widget_point")
     WIDGET_POINT,
 }
+
+data class PageTimeRange(
+    val preset: String? = null,
+    val from: LocalDate? = null,
+    val to: LocalDate? = null,
+)
+
+data class PageFilterState(
+    @field:NotBlank
+    val field: String,
+    @field:NotNull
+    val op: FilterOperator,
+    val values: List<String> = emptyList(),
+    val locked: Boolean = false,
+)
 
 data class MeasureSpec(
     @field:NotBlank
@@ -231,6 +260,8 @@ data class DashboardPage(
     val icon: String?,
     val sortOrder: Int,
     val archived: Boolean,
+    val timeRange: PageTimeRange? = null,
+    val filters: List<PageFilterState> = emptyList(),
     val createdAt: Instant,
     val updatedAt: Instant,
 )
@@ -248,6 +279,8 @@ data class WidgetDefinition(
     val isSystem: Boolean,
     val version: Int,
     val archived: Boolean,
+    val usageCount: Int = 0,
+    val usedOnPages: List<String> = emptyList(),
     val createdAt: Instant,
     val updatedAt: Instant,
 )
@@ -284,12 +317,22 @@ data class AnnotationV2(
     val scopeDate: LocalDate?,
     val xValue: String?,
     val yValue: Double?,
+    val annotationType: AnnotationTypeV2 = AnnotationTypeV2.NOTE,
+    val name: String? = null,
+    val description: String? = null,
     val title: String,
     val body: String?,
     val color: String?,
+    val tags: List<String> = emptyList(),
+    val commitRefs: List<AnnotationCommitRef> = emptyList(),
     val scope: Map<String, Any?>,
     val createdAt: Instant,
     val updatedAt: Instant,
+)
+
+data class AnnotationCommitRef(
+    val repoId: String,
+    val commitSha: String,
 )
 
 data class JiraConnectionSettings(
@@ -311,6 +354,8 @@ data class PageSummaryDto(
     val icon: String?,
     val sortOrder: Int,
     val archived: Boolean,
+    val timeRange: PageTimeRange? = null,
+    val filters: List<PageFilterState> = emptyList(),
 )
 
 data class WidgetCatalogSummaryDto(
@@ -323,6 +368,8 @@ data class WidgetCatalogSummaryDto(
     val datasetKey: DatasetKey?,
     val isSystem: Boolean,
     val archived: Boolean,
+    val usageCount: Int = 0,
+    val usedOnPages: List<String> = emptyList(),
 )
 
 data class QuerySchemaFieldDto(
@@ -356,17 +403,26 @@ data class BootstrapV2Response(
     val jiraEnabled: Boolean,
 )
 
+data class PageStateRequest(
+    val timeRange: PageTimeRange? = null,
+    val filters: List<PageFilterState> = emptyList(),
+)
+
 data class CreatePageRequest(
     @field:NotBlank
     val title: String,
     val description: String? = null,
     val icon: String? = null,
+    val timeRange: PageTimeRange? = null,
+    val filters: List<PageFilterState> = emptyList(),
 )
 
 data class UpdatePageRequest(
     val title: String? = null,
     val description: String? = null,
     val icon: String? = null,
+    val timeRange: PageTimeRange? = null,
+    val filters: List<PageFilterState>? = null,
 )
 
 data class ReorderPagesRequest(
@@ -447,18 +503,26 @@ data class CreateAnnotationV2Request(
     val scopeDate: LocalDate? = null,
     val xValue: String? = null,
     val yValue: Double? = null,
-    @field:NotBlank
-    val title: String,
+    val annotationType: AnnotationTypeV2 = AnnotationTypeV2.NOTE,
+    val name: String? = null,
+    val description: String? = null,
+    val title: String? = null,
     val body: String? = null,
     val color: String? = null,
+    val tags: List<String> = emptyList(),
+    val commitRefs: List<AnnotationCommitRef> = emptyList(),
     val scope: Map<String, Any?> = emptyMap(),
 )
 
 data class UpdateAnnotationV2Request(
-    @field:NotBlank
-    val title: String,
+    val annotationType: AnnotationTypeV2? = null,
+    val name: String? = null,
+    val description: String? = null,
+    val title: String? = null,
     val body: String? = null,
     val color: String? = null,
+    val tags: List<String>? = null,
+    val commitRefs: List<AnnotationCommitRef>? = null,
 )
 
 data class QueryPreviewRequest(
@@ -482,6 +546,18 @@ data class QueryExecutionResponse(
     val totals: Map<String, Number>,
     val effectiveQuery: WidgetQuerySpec,
     val comparisonRange: Map<String, String>? = null,
+)
+
+data class SyncLogEntryDto(
+    val eventKey: String,
+    val sourceKind: String,
+    val repoId: String? = null,
+    val label: String,
+    val detail: String? = null,
+    val status: String,
+    val startedAt: Instant? = null,
+    val finishedAt: Instant? = null,
+    val progressPercent: Int? = null,
 )
 
 data class DrilldownSeriesSelection(
@@ -610,4 +686,46 @@ data class SnapshotStatusResponse(
 data class SnapshotTriggerResponse(
     val accepted: Boolean,
     val rebuiltRepos: List<String>,
+)
+
+data class CommitFileChangeDto(
+    val filePath: String,
+    val oldPath: String?,
+    val language: String?,
+    val category: String?,
+    val subtype: String?,
+    val linesAdded: Int,
+    val linesRemoved: Int,
+    val isBinary: Boolean,
+)
+
+data class CommitDetailResponse(
+    val repoId: String,
+    val commitSha: String,
+    val authorName: String,
+    val authorEmail: String?,
+    val authoredAt: Instant,
+    val committedAt: Instant,
+    val subject: String,
+    val parentCommitShas: List<String>,
+    val linesAdded: Int,
+    val linesRemoved: Int,
+    val files: List<CommitFileChangeDto>,
+    val annotations: List<AnnotationV2>,
+)
+
+data class EditorLaunchRequest(
+    val repoId: String,
+    val commitSha: String,
+    val filePaths: List<String> = emptyList(),
+)
+
+data class EditorLaunchResponse(
+    val available: Boolean,
+    val reason: String? = null,
+    val repoId: String,
+    val commitSha: String,
+    val repoPath: String? = null,
+    val editorCommand: String? = null,
+    val filePaths: List<String> = emptyList(),
 )

@@ -416,15 +416,23 @@ textarea {
   overflow-y: auto;
 }
 
-/* In V2 layout the content pane IS the surface — strip inner card styling */
-.content-body > .workspace-surface {
+/* In V2 layout the content pane IS the surface — all direct view children inherit from it */
+.content-body > .workspace-surface,
+.content-body > .workspace-page,
+.content-body > .settings-view,
+.content-body > .sync-view,
+.content-body > .dashboard-shell {
   background: transparent;
   border: none;
   box-shadow: none;
   border-radius: 0;
-  padding: 24px;
   min-height: 100%;
   box-sizing: border-box;
+}
+
+/* workspace-surface additionally needs its own padding zeroed (padding moved to wrapper) */
+.content-body > .workspace-surface {
+  padding: 24px;
 }
 
 /* ── Sync status badge ── */

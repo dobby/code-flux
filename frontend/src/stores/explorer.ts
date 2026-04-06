@@ -198,7 +198,7 @@ export const useExplorerStore = defineStore('explorer', () => {
     try {
       dayDetail.value = await loadDayDrilldown({
         selectedDate: selectedDate.value,
-        dataset: 'day_activity',
+        dataset: 'throughput_daily',
         effectiveFilters: [],
         selectedSeries: null,
       })

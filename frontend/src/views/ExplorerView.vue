@@ -3,6 +3,10 @@ import { computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   GitCommitHorizontal,
+  ExternalLink,
+  Plus,
+  Tag,
+  File,
 } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard'
 import { useExplorerStore } from '../stores/explorer'
@@ -15,46 +19,48 @@ const router = useRouter()
 const dashboard = useDashboardStore()
 const explorer = useExplorerStore()
 
+const formattedSelectedDate = computed(() => {
+  if (!explorer.selectedDate) return ''
+  const date = new Date(explorer.selectedDate + 'T00:00:00')
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+})
+
+const selectedDayCommitCount = computed(
+  () => explorer.dayDetail?.summary.commitsCount ?? explorer.displayCommits.length,
+)
+
+const selectedDayRepoCount = computed(() => {
+  const repos = new Set(explorer.displayCommits.map((c) => c.repoId))
+  return repos.size
+})
+
 const chartOption = computed<EChartsOption>(() => ({
   backgroundColor: 'transparent',
   animation: true,
   tooltip: {
     trigger: 'axis',
+    axisPointer: { type: 'shadow' },
     formatter: (params: unknown) => {
       const points = Array.isArray(params) ? params : []
       const first = points[0] as { axisValueLabel?: string; data?: number } | undefined
       return `${first?.axisValueLabel ?? ''}<br/>${first?.data ?? 0} commits`
     },
   },
-  grid: {
-    left: 34,
-    right: 24,
-    top: 18,
-    bottom: 24,
-    containLabel: true,
-  },
+  grid: { left: 0, right: 0, top: 8, bottom: 0, containLabel: false },
   xAxis: {
     type: 'category',
-    data: explorer.analytics.map((point) => point.day.slice(5)),
-    axisLabel: {
-      color: '#64748b',
-      fontSize: 10,
-    },
-    axisLine: {
-      lineStyle: { color: '#d1d5db' },
-    },
+    data: explorer.analytics.map((point) => point.day),
+    axisLabel: { show: false },
+    axisLine: { show: false },
     axisTick: { show: false },
+    splitLine: { show: false },
   },
   yAxis: {
     type: 'value',
-    axisLabel: {
-      color: '#64748b',
-      fontSize: 10,
-      showMaxLabel: false,
-    },
-    splitLine: {
-      lineStyle: { color: '#e5e7eb' },
-    },
+    axisLabel: { show: false },
+    axisLine: { show: false },
+    axisTick: { show: false },
+    splitLine: { show: false },
   },
   series: [
     {
@@ -63,35 +69,51 @@ const chartOption = computed<EChartsOption>(() => ({
         name: point.day,
         value: point.value,
         itemStyle: {
-          color: point.day === explorer.selectedDate ? '#6366f1' : '#a5b4fc',
-          borderRadius: [1.5, 1.5, 0, 0],
+          color: point.day === explorer.selectedDate ? '#6366f1' : 'rgba(148, 163, 184, 0.35)',
+          borderRadius: [2, 2, 0, 0],
         },
       })),
-      barWidth: 10,
-      barCategoryGap: '24%',
-      emphasis: {
-        itemStyle: {
-          color: '#6366f1',
-        },
-      },
+      barMaxWidth: 28,
+      barMinWidth: 16,
+      barCategoryGap: '20%',
+      emphasis: { itemStyle: { color: '#6366f1' } },
     },
   ],
 }))
 
 function onExplorerChartClick(event: unknown) {
-  const chartEvent = event as { name?: string; data?: { name?: string } | null; dataIndex?: number; dataIndexInside?: number }
-  const day = chartEvent.name || chartEvent.data?.name
-  if (!day) {
-    return
-  }
-  const fullDay = explorer.analytics.find((point) => point.day.slice(5) === day)?.day ?? day
-  explorer.selectDate(fullDay.length === 10 ? fullDay : day)
+  const chartEvent = event as { name?: string }
+  const day = chartEvent.name
+  if (!day) return
+  explorer.selectDate(day)
   explorer.syncQueryToUrl(router)
 }
 
-function openCommit(repoId: string, commitSha: string) {
-  explorer.selectCommit(commitSha)
-  void router.push({ name: 'explorer-commit', params: { repoId, commitSha }, query: { date: explorer.selectedDate } })
+const authorInitial = computed(() => (explorer.selectedCommit?.author ?? '?').slice(0, 1).toUpperCase())
+
+function formatDetailTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso)
+    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+    return `${date} at ${time}`
+  } catch {
+    return iso
+  }
+}
+
+const detailFilesCount = computed(() => explorer.displayCommitFiles.length)
+const visibleFiles = computed(() => explorer.displayCommitFiles.slice(0, 6))
+const extraFileCount = computed(() => Math.max(0, explorer.displayCommitFiles.length - 6))
+
+function openSelectedCommit() {
+  const c = explorer.selectedCommit
+  if (!c) return
+  void router.push({
+    name: 'explorer-commit',
+    params: { repoId: c.repoId, commitSha: c.commitSha },
+    query: { date: explorer.selectedDate },
+  })
 }
 
 watch(
@@ -110,35 +132,9 @@ watch(
 )
 
 watch(
-  () => [route.query.date, route.query.range, route.query.repo] as const,
-  ([date, range, repo]) => {
-    const nextDate = typeof date === 'string' ? date : ''
-    const nextRange = (value: unknown): '7d' | '14d' | '30d' | '90d' =>
-      value === '7d' || value === '14d' || value === '30d' || value === '90d' ? value : '14d'
-    const nextRepoIds = (value: unknown): string[] => {
-      if (Array.isArray(value)) {
-        return value
-          .flatMap((entry) => (typeof entry === 'string' ? entry.split(',') : []))
-          .map((entry) => entry.trim())
-          .filter(Boolean)
-      }
-      if (typeof value === 'string') {
-        return value.split(',').map((entry) => entry.trim()).filter(Boolean)
-      }
-      return []
-    }
-    const parsedDate = nextDate
-    const parsedRange = nextRange(range)
-    const parsedRepoIds = nextRepoIds(repo)
-    if (parsedDate && parsedDate !== explorer.selectedDate) {
-      explorer.selectDate(parsedDate)
-    }
-    if (parsedRange !== explorer.rangePreset) {
-      explorer.setRangePreset(parsedRange)
-    }
-    if (parsedRepoIds.join(',') !== explorer.selectedRepoIds.join(',')) {
-      explorer.setRepoFilters(parsedRepoIds)
-    }
+  () => route.query,
+  (query) => {
+    explorer.initFromQuery(query)
   },
 )
 
@@ -155,123 +151,147 @@ onMounted(async () => {
 
 <template>
   <section class="explorer-view">
-    <section class="explorer-view__chart-card">
-      <div class="explorer-view__chart-header">
-        <div>
-          <h2>Commit activity</h2>
-          <p>{{ explorer.selectedDate || 'Select a day' }} · {{ (explorer.dayDetail?.summary.commitsCount ?? explorer.displayCommits.length) }} commits across {{ explorer.dayDetail?.summary.contributorsCount ?? 3 }} contributors</p>
-        </div>
-        <strong v-if="explorer.dayDetail">{{ explorer.dayDetail.summary.date.slice(5, 10) }}</strong>
+    <section class="explorer-chart">
+      <div class="explorer-chart__header">
+        <span class="explorer-chart__title">Commit activity</span>
+        <span v-if="explorer.selectedDate" class="explorer-chart__badge">
+          {{ formattedSelectedDate }} selected · {{ selectedDayCommitCount }} commits across {{ selectedDayRepoCount }} repos
+        </span>
       </div>
-      <div class="explorer-view__chart" :class="{ 'explorer-view__chart--loading': explorer.loadingAnalytics }">
+      <div class="explorer-chart__canvas-wrap">
         <VChart
           v-if="explorer.analytics.length"
-          class="explorer-view__chart-canvas"
+          class="explorer-chart__canvas"
           :option="chartOption"
           :autoresize="true"
           @click="onExplorerChartClick"
         />
-        <div v-else class="explorer-view__empty">No activity yet.</div>
+        <div v-else class="explorer-chart__empty">No activity yet.</div>
       </div>
     </section>
 
-    <section class="explorer-view__split">
-      <article class="explorer-view__panel">
-        <div class="explorer-view__panel-header">
-          <div>
-            <h2>Commits · {{ explorer.selectedDate || 'No date' }}</h2>
-            <p>{{ explorer.displayCommits.length }} commits</p>
-          </div>
-        </div>
-        <div v-if="explorer.loadingDay" class="explorer-view__empty">Loading commits…</div>
-        <div v-else class="explorer-view__list">
+    <section class="explorer-split">
+      <!-- LEFT: commit list -->
+      <aside class="explorer-split__list-pane">
+        <header class="explorer-split__pane-header">
+          <span class="explorer-split__pane-title">Commits · {{ formattedSelectedDate || 'No date' }}</span>
+          <span class="explorer-split__pane-count">{{ explorer.displayCommits.length }} commits</span>
+        </header>
+        <div v-if="explorer.loadingDay" class="explorer-split__empty">Loading commits…</div>
+        <div v-else-if="!explorer.displayCommits.length" class="explorer-split__empty">No commits for this day.</div>
+        <div v-else class="explorer-split__commit-list">
           <button
             v-for="commit in explorer.displayCommits"
             :key="commit.commitSha"
-            class="explorer-view__commit"
-            :class="{ 'explorer-view__commit--active': commit.commitSha === explorer.selectedCommit?.commitSha }"
+            class="explorer-split__commit-row"
+            :class="{ 'explorer-split__commit-row--active': commit.commitSha === explorer.selectedCommit?.commitSha }"
             type="button"
-            @click="openCommit(commit.repoId, commit.commitSha)"
+            @click="explorer.selectCommit(commit.commitSha)"
           >
-            <GitCommitHorizontal :size="14" />
-            <span class="explorer-view__commit-main">
-              <strong>{{ commit.subject }}</strong>
-              <small>{{ commit.author }} · {{ commit.repoId }} · {{ commit.linesAdded }} + / {{ commit.linesRemoved }} -</small>
+            <GitCommitHorizontal :size="16" class="explorer-split__commit-icon" />
+            <span class="explorer-split__commit-body">
+              <span class="explorer-split__commit-subject">{{ commit.subject }}</span>
+              <span class="explorer-split__commit-meta">
+                {{ commit.author }} · {{ commit.repoId }} · {{ (commit as any).filesChanged ?? 0 }} files · +{{ commit.linesAdded }} −{{ commit.linesRemoved }}
+              </span>
             </span>
-            <span v-if="commit.issueKeys.length" class="explorer-view__chip">{{ commit.issueKeys[0] }}</span>
+            <span v-if="commit.issueKeys && commit.issueKeys.length" class="explorer-split__commit-tag">
+              {{ commit.issueKeys[0] }}
+            </span>
           </button>
         </div>
-      </article>
+      </aside>
 
-      <article class="explorer-view__panel explorer-view__panel--detail">
-        <div v-if="explorer.selectedCommit" class="explorer-view__detail">
-            <div class="explorer-view__panel-header">
-              <div>
-                <h2>Commit detail</h2>
-                <p>{{ explorer.selectedCommit.repoId }} · {{ explorer.selectedCommit.commitSha.slice(0, 8) }}</p>
-              </div>
-              <button class="explorer-view__open" type="button" disabled title="Backend editor-launch support is not wired yet">
-                Open in editor
+      <!-- RIGHT: detail panel -->
+      <section class="explorer-split__detail-pane">
+        <header class="explorer-split__pane-header">
+          <span class="explorer-split__pane-title">Commit detail</span>
+          <button class="explorer-split__open-btn" type="button" @click="openSelectedCommit">
+            <ExternalLink :size="13" />
+            <span>Open in editor</span>
+          </button>
+        </header>
+        <div v-if="!explorer.selectedCommit" class="explorer-split__empty">Select a commit to see details.</div>
+        <div v-else class="explorer-split__detail-body">
+          <div class="explorer-detail__commit-info">
+            <div class="explorer-detail__subject">{{ explorer.selectedCommit.subject }}</div>
+            <div class="explorer-detail__hash">
+              {{ explorer.selectedCommit.commitSha.slice(0, 7) }} ·
+              {{ formatDetailTimestamp(explorer.selectedCommit.authoredAt) }}
+            </div>
+            <div class="explorer-detail__author-row">
+              <span class="explorer-detail__avatar">{{ authorInitial }}</span>
+              <span class="explorer-detail__author-name">{{ explorer.selectedCommit.author }}</span>
+              <span class="explorer-detail__author-repo">· {{ explorer.selectedCommit.repoId }}</span>
+            </div>
+          </div>
+
+          <div class="explorer-detail__divider" />
+
+          <div class="explorer-detail__stats">
+            <div class="explorer-detail__stat">
+              <span class="explorer-detail__stat-label">Files changed</span>
+              <span class="explorer-detail__stat-value explorer-detail__stat-value--neutral">{{ detailFilesCount }}</span>
+            </div>
+            <div class="explorer-detail__stat">
+              <span class="explorer-detail__stat-label">Lines added</span>
+              <span class="explorer-detail__stat-value explorer-detail__stat-value--added">+{{ explorer.selectedCommit.linesAdded }}</span>
+            </div>
+            <div class="explorer-detail__stat">
+              <span class="explorer-detail__stat-label">Lines removed</span>
+              <span class="explorer-detail__stat-value explorer-detail__stat-value--removed">−{{ explorer.selectedCommit.linesRemoved }}</span>
+            </div>
+          </div>
+
+          <div class="explorer-detail__divider" />
+
+          <div class="explorer-detail__section">
+            <div class="explorer-detail__section-header">
+              <span class="explorer-detail__section-title">Annotations</span>
+              <button class="explorer-detail__add-btn" type="button" @click="explorer.openNewAnnotation()">
+                <Plus :size="12" />
+                <span>Add</span>
               </button>
             </div>
+            <div v-if="!explorer.dayAnnotations.length" class="explorer-detail__empty">No annotations yet.</div>
+            <button
+              v-for="annotation in explorer.dayAnnotations"
+              :key="annotation.id"
+              class="explorer-detail__annotation-card"
+              type="button"
+              @click="explorer.editAnnotation(annotation)"
+            >
+              <Tag :size="14" class="explorer-detail__annotation-icon" />
+              <span class="explorer-detail__annotation-body">
+                <span class="explorer-detail__annotation-title">{{ annotation.name || annotation.title || 'Annotation' }}</span>
+                <span class="explorer-detail__annotation-desc">
+                  {{ annotation.annotationType }} · {{ annotation.description || annotation.body || 'No description' }}
+                </span>
+              </span>
+            </button>
+          </div>
 
-          <section class="explorer-view__detail-summary">
-            <strong>{{ explorer.selectedCommit.subject }}</strong>
-            <p>{{ explorer.selectedCommit.author }} · {{ explorer.selectedDate }}</p>
-            <div class="explorer-view__metrics">
-              <article><span>Files changed</span><strong>{{ explorer.displayCommitFiles.length }}</strong></article>
-              <article><span>Lines added</span><strong>{{ explorer.selectedCommit.linesAdded }}</strong></article>
-              <article><span>Lines removed</span><strong>{{ explorer.selectedCommit.linesRemoved }}</strong></article>
-            </div>
-          </section>
+          <div class="explorer-detail__divider" />
 
-          <section class="explorer-view__section">
-            <div class="explorer-view__section-header">
-              <div>
-                <h3>Annotations</h3>
-                <p>Notes for the selected day.</p>
-              </div>
-              <button class="explorer-view__secondary" type="button" @click="explorer.openNewAnnotation()">Add annotation</button>
-            </div>
-            <div v-if="explorer.loadingAnnotations" class="explorer-view__empty">Loading annotations…</div>
-            <div v-else-if="explorer.dayAnnotations.length" class="explorer-view__annotation-list">
-              <button
-                v-for="annotation in explorer.dayAnnotations"
-                :key="annotation.id"
-                class="explorer-view__annotation-card"
-                type="button"
-                @click="explorer.editAnnotation(annotation)"
+          <div class="explorer-detail__section">
+            <span class="explorer-detail__section-title">Changed files</span>
+            <div class="explorer-detail__files">
+              <div
+                v-for="file in visibleFiles"
+                :key="file.filePath"
+                class="explorer-detail__file-row"
               >
-                <div class="explorer-view__annotation-text">
-                  <strong>{{ annotation.name || annotation.title }}</strong>
-                  <p>{{ annotation.description || 'No description yet.' }}</p>
-                </div>
-                <small>{{ annotation.annotationType }}</small>
+                <File :size="13" class="explorer-detail__file-icon" />
+                <span class="explorer-detail__file-path">{{ file.filePath }}</span>
+                <span class="explorer-detail__file-stats">+{{ file.linesAdded }} −{{ file.linesRemoved }}</span>
+              </div>
+              <button v-if="extraFileCount > 0" class="explorer-detail__more-files" type="button">
+                + {{ extraFileCount }} more files
               </button>
             </div>
-            <div v-else class="explorer-view__empty">No annotations for this day.</div>
-          </section>
-
-          <section class="explorer-view__section">
-            <div class="explorer-view__section-header">
-              <div>
-                <h3>Changed files</h3>
-                <p>{{ explorer.displayCommitFiles.length }} files shown</p>
-              </div>
-            </div>
-            <div class="explorer-view__file-list">
-              <div v-for="file in explorer.displayCommitFiles" :key="`${file.repoId}:${file.filePath}`" class="explorer-view__file-row">
-                <div>
-                  <strong>{{ file.filePath }}</strong>
-                  <p>{{ file.language ?? 'Unknown language' }}</p>
-                </div>
-                <span>{{ file.linesAdded }} + / {{ file.linesRemoved }} -</span>
-              </div>
-            </div>
-          </section>
+          </div>
         </div>
-        <div v-else class="explorer-view__empty explorer-view__empty--detail">Select a commit to inspect its details.</div>
-      </article>
+      </section>
     </section>
 
     <ExplorerAnnotationModal
@@ -289,239 +309,426 @@ onMounted(async () => {
 
 <style scoped>
 .explorer-view {
-  display: grid;
-  gap: 8px;
-  color: #162033;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
+  color: #162033;
 }
 
-.explorer-view__chart-header,
-.explorer-view__panel-header,
-.explorer-view__section-header {
+.explorer-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 220px;
+  flex-shrink: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background: transparent;
+}
+
+.explorer-chart__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
 }
 
-.explorer-view__chart-header p,
-.explorer-view__panel-header p,
-.explorer-view__section-header p,
-.explorer-view__file-row p {
-  margin: 0;
-  color: #64748b;
+.explorer-chart__title {
   font-size: 12px;
+  font-weight: 600;
+  color: #162033;
+  line-height: 1;
 }
 
-.explorer-view__chart-header h2,
-.explorer-view__panel-header h2 {
-  margin: 0;
-  color: #111827;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.explorer-view__open,
-.explorer-view__secondary {
-  border: 0;
-  border-radius: 8px;
-  padding: 5px 8px;
+.explorer-chart__badge {
+  margin-left: auto;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.08);
+  padding: 3px 8px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
+  color: #6366f1;
+  line-height: 1.3;
 }
 
-.explorer-view__secondary {
-  background: #eef2ff;
-  color: #4338ca;
+.explorer-chart__canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
 }
 
-.explorer-view__chart-card,
-.explorer-view__panel {
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 8px;
-  padding: 10px 10px 9px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: none;
-}
-
-.explorer-view__chart {
-  padding: 8px 0 2px;
-  height: 148px;
-}
-
-.explorer-view__chart-canvas {
+.explorer-chart__canvas {
   width: 100%;
   height: 100%;
 }
 
-.explorer-view__split {
+.explorer-chart__empty {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: 10px;
-  align-items: stretch;
-}
-
-.explorer-view__list,
-.explorer-view__annotation-list,
-.explorer-view__file-list {
-  display: grid;
-  gap: 4px;
-}
-
-.explorer-view__commit,
-.explorer-view__annotation-card {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 8px;
-  padding: 6px 8px;
-  background: rgba(248, 250, 252, 0.96);
-  text-align: left;
-}
-
-.explorer-view__commit--active {
-  border-color: rgba(99, 102, 241, 0.28);
-  background: rgba(99, 102, 241, 0.08);
-}
-
-.explorer-view__commit-main strong,
-.explorer-view__annotation-card strong,
-.explorer-view__file-row strong {
-  color: #111827;
+  place-items: center;
+  height: 100%;
+  color: #94a0b8;
   font-size: 11px;
 }
 
-.explorer-view__commit-main small,
-.explorer-view__annotation-text p,
-.explorer-view__annotation-card small {
-  display: block;
-  margin-top: 2px;
-  color: #64748b;
-  font-size: 10px;
-  line-height: 1.2;
+.explorer-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.explorer-view__annotation-card {
-  grid-template-columns: minmax(0, 1fr) auto;
+.explorer-split__list-pane {
+  width: 520px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(148, 163, 184, 0.22);
+  min-height: 0;
 }
 
-.explorer-view__annotation-card small {
-  text-align: right;
-  white-space: nowrap;
-  margin: 0;
-}
-
-.explorer-view__annotation-text {
-  display: grid;
+.explorer-split__detail-pane {
+  flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.explorer-split__pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  flex-shrink: 0;
+}
+
+.explorer-split__detail-pane .explorer-split__pane-header {
+  padding: 0 20px;
+}
+
+.explorer-split__pane-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #162033;
+}
+
+.explorer-split__pane-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a0b8;
+}
+
+.explorer-split__open-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 6px;
+  background: transparent;
+  color: #61708d;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.explorer-split__empty {
+  padding: 20px;
+  color: #94a0b8;
+  font-size: 11px;
+}
+
+.explorer-split__commit-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.explorer-split__commit-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.explorer-split__commit-row--active {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.explorer-split__commit-icon {
+  flex-shrink: 0;
+  color: #94a0b8;
+}
+
+.explorer-split__commit-row--active .explorer-split__commit-icon {
+  color: #6366f1;
+}
+
+.explorer-split__commit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.explorer-split__commit-subject {
+  font-size: 12px;
+  font-weight: 500;
+  color: #162033;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-split__commit-meta {
+  font-size: 11px;
+  color: #94a0b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-split__commit-tag {
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.08);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #6366f1;
+}
+
+.explorer-split__detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.explorer-detail__commit-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.explorer-detail__subject {
+  font-size: 14px;
+  font-weight: 600;
+  color: #162033;
+  line-height: 1.4;
+}
+
+.explorer-detail__hash {
+  font-size: 11px;
+  color: #94a0b8;
+}
+
+.explorer-detail__author-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.explorer-detail__avatar {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #6366f1;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.explorer-detail__author-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #61708d;
+}
+
+.explorer-detail__author-repo {
+  font-size: 12px;
+  color: #94a0b8;
+}
+
+.explorer-detail__divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.22);
+  flex-shrink: 0;
+}
+
+.explorer-detail__stats {
+  display: flex;
+  gap: 16px;
+}
+
+.explorer-detail__stat {
+  display: flex;
+  flex-direction: column;
   gap: 2px;
 }
 
-.explorer-view__chip {
-  border-radius: 999px;
-  padding: 2px 7px;
-  background: #e0e7ff;
-  color: #4338ca;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.explorer-view__detail-summary {
-  display: grid;
-  gap: 7px;
-  border-radius: 8px;
-  padding: 8px 9px;
-  background: rgba(99, 102, 241, 0.08);
-}
-
-.explorer-view__detail-summary strong {
-  color: #1e1b4b;
-  font-size: 12px;
-  line-height: 1.2;
-}
-
-.explorer-view__metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.explorer-view__metrics article {
-  border-radius: 8px;
-  padding: 6px 7px;
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.explorer-view__metrics span {
-  display: block;
-  color: #64748b;
-  font-size: 9px;
+.explorer-detail__stat-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a0b8;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
+  letter-spacing: 0.05em;
 }
 
-.explorer-view__metrics strong {
-  color: #111827;
-  font-size: 14px;
-  line-height: 1.2;
+.explorer-detail__stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
 }
 
-.explorer-view__section {
-  display: grid;
-  gap: 6px;
-  margin-top: 8px;
+.explorer-detail__stat-value--neutral { color: #162033; }
+.explorer-detail__stat-value--added { color: #22c55e; }
+.explorer-detail__stat-value--removed { color: #ef4444; }
+
+.explorer-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.explorer-view__file-row {
+.explorer-detail__section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-  padding: 7px 2px;
+  gap: 8px;
+}
+
+.explorer-detail__section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #162033;
+}
+
+.explorer-detail__add-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 6px;
   background: transparent;
+  color: #61708d;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
 }
 
-.explorer-view__file-list {
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
+.explorer-detail__empty {
+  font-size: 11px;
+  color: #94a0b8;
 }
 
-.explorer-view__file-row p {
-  margin: 0;
-  font-size: 10px;
+.explorer-detail__annotation-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.04);
+  text-align: left;
+  cursor: pointer;
 }
 
-.explorer-view__file-row span {
-  font-size: 10px;
+.explorer-detail__annotation-icon {
+  flex-shrink: 0;
+  color: #6366f1;
+}
+
+.explorer-detail__annotation-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.explorer-detail__annotation-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #162033;
+}
+
+.explorer-detail__annotation-desc {
+  font-size: 11px;
+  color: #94a0b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.explorer-view__open {
-  background: #4f46e5;
-  color: #fff;
+.explorer-detail__files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.explorer-view__empty {
-  border-radius: 8px;
-  padding: 8px;
-  background: rgba(248, 250, 252, 0.96);
-  color: #64748b;
+.explorer-detail__file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  width: 100%;
+}
+
+.explorer-detail__file-icon {
+  flex-shrink: 0;
+  color: #94a0b8;
+}
+
+.explorer-detail__file-path {
+  flex: 1;
+  min-width: 0;
   font-size: 11px;
+  font-weight: 500;
+  color: #61708d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.explorer-view__empty--detail {
-  min-height: 100%;
-  display: grid;
-  place-items: center;
+.explorer-detail__file-stats {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a0b8;
 }
 
-@media (max-width: 1100px) {
-  .explorer-view__split {
-    grid-template-columns: 1fr;
-  }
+.explorer-detail__more-files {
+  margin-top: 2px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: #6366f1;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
 }
 </style>

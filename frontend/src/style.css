@@ -144,7 +144,7 @@ textarea {
 
 .app-shell--collapsed .content-pane {
   margin: 0;
-  border-radius: 0;
+  border-radius: 14px;
 }
 
 /* Toolbar row: traffic lights area + collapse + back + forward */
@@ -336,13 +336,13 @@ textarea {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-radius: 0;
+  border-radius: 14px;
   background: #ffffff;
   overflow: hidden;
 }
 
 [data-platform="darwin"] .content-pane {
-  border-radius: 0;
+  border-radius: 14px;
 }
 
 [data-platform="darwin"] .app-shell {
@@ -356,18 +356,20 @@ textarea {
 .content-chrome {
   display: flex;
   align-items: center;
-  height: 42px;
+  height: 38px;
   flex-shrink: 0;
-  padding: 0 12px;
-  gap: 10px;
+  padding: 0 10px;
+  gap: 8px;
   app-region: drag;
   -webkit-app-region: drag;
   user-select: none;
   border-bottom: 1px solid var(--cf-border);
+  position: relative;
+  background: #ffffff;
 }
 
 .content-chrome__title {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--cf-text-secondary);
   letter-spacing: -0.01em;
@@ -385,9 +387,102 @@ textarea {
 .content-chrome__actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   app-region: no-drag;
   -webkit-app-region: no-drag;
+}
+
+.content-chrome__explorer-toolbar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.content-chrome__toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.content-chrome__pill,
+.content-chrome__ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #334155;
+  font-size: 10px;
+  font-weight: 700;
+  min-height: 20px;
+  padding: 2px 7px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.content-chrome__ghost {
+  background: transparent;
+}
+
+.content-chrome__ghost--accent {
+  border-color: rgba(99, 102, 241, 0.24);
+  background: #ffffff;
+  color: #5b5ce2;
+}
+
+.content-chrome__explorer-menu {
+  position: fixed;
+  min-width: 180px;
+  z-index: 25;
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(18, 38, 76, 0.08);
+}
+
+.content-chrome__explorer-menu button {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #f8fafc;
+  text-align: left;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.content-chrome__explorer-menu button:disabled {
+  color: #94a3b8;
+}
+
+.content-chrome__menu-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.content-chrome__menu-check-placeholder {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+}
+
+.content-chrome__menu-reset {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #f1f5f9;
+  text-align: left;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 /* TL gap and expand button shown in content chrome when sidebar is collapsed */
@@ -446,6 +541,12 @@ textarea {
 
 .content-body > .workspace-page {
   padding: 12px 20px 20px;
+}
+
+.content-body > .explorer-view {
+  padding: 0;
+  min-height: 100%;
+  background: transparent;
 }
 
 /* ── Sync status badge ── */

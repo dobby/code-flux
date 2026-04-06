@@ -1,29 +1,36 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  CalendarDays,
+  Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   FileText,
   GitBranch,
+  Filter,
   LayoutGrid,
   LoaderCircle,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  MessageSquarePlus,
   RefreshCcw,
   Settings2,
 } from 'lucide-vue-next'
 import { useShellChrome } from './composables/useShellChrome'
 import { useWorkspaceStore } from './stores/workspace'
 import { useDashboardStore } from './stores/dashboard'
+import { useExplorerStore } from './stores/explorer'
 import DrilldownDrawer from './components/DrilldownDrawer.vue'
 
 const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspaceStore()
 const dashboard = useDashboardStore()
+const explorer = useExplorerStore()
 useShellChrome()
 
 const sidebarCollapsed = ref(false)
@@ -34,9 +41,36 @@ const currentPage = computed(() => (
   workspace.pages.find((page) => page.id === route.params.pageId) ?? null
 ))
 
+const isExplorerRoute = computed(() => route.name === 'explorer' || route.name === 'explorer-commit')
 const isSettingsRoute = computed(() => (
   route.name === 'settings-general' || route.name === 'settings-jira'
 ))
+
+type ExplorerMenuStyle = { top: string; left: string }
+const explorerTimeMenuOpen = ref(false)
+const explorerRepoMenuOpen = ref(false)
+const explorerFilterMenuOpen = ref(false)
+const explorerTimeMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
+const explorerRepoMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
+const explorerFilterMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
+
+function setMenuPosition(styleRef: typeof explorerTimeMenuStyle, event: MouseEvent) {
+  if (!event.currentTarget) {
+    return
+  }
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  styleRef.value = {
+    top: `${rect.bottom + 6}px`,
+    left: `${rect.left}px`,
+  }
+}
+
+const explorerRangeOptions: Array<{ id: '7d' | '14d' | '30d' | '90d'; label: string }> = [
+  { id: '7d', label: 'Last 7 days' },
+  { id: '14d', label: 'Last 14 days' },
+  { id: '30d', label: 'Last 30 days' },
+  { id: '90d', label: 'Last 90 days' },
+]
 
 const shellStyle = computed(() => {
   if (sidebarCollapsed.value) {
@@ -130,11 +164,57 @@ function navigateToSettings() {
   void router.push({ name: 'settings-general' })
 }
 
+function closeExplorerMenus() {
+  explorerTimeMenuOpen.value = false
+  explorerRepoMenuOpen.value = false
+  explorerFilterMenuOpen.value = false
+}
+
+function toggleExplorerTimeMenu(event: MouseEvent) {
+  setMenuPosition(explorerTimeMenuStyle, event)
+  explorerTimeMenuOpen.value = !explorerTimeMenuOpen.value
+  explorerRepoMenuOpen.value = false
+  explorerFilterMenuOpen.value = false
+}
+
+function toggleExplorerRepoMenu(event: MouseEvent) {
+  setMenuPosition(explorerRepoMenuStyle, event)
+  explorerRepoMenuOpen.value = !explorerRepoMenuOpen.value
+  explorerTimeMenuOpen.value = false
+  explorerFilterMenuOpen.value = false
+}
+
+function toggleExplorerFilterMenu(event: MouseEvent) {
+  setMenuPosition(explorerFilterMenuStyle, event)
+  explorerFilterMenuOpen.value = !explorerFilterMenuOpen.value
+  explorerTimeMenuOpen.value = false
+  explorerRepoMenuOpen.value = false
+}
+
+function handleDocumentPointer(event: MouseEvent) {
+  const target = event.target
+  if (!(target instanceof Element)) return
+  if (!target.closest('.content-chrome__explorer-toolbar') && !target.closest('.content-chrome__explorer-menu')) {
+    closeExplorerMenus()
+  }
+}
+
 onMounted(() => {
   sidebarCollapsed.value = window.localStorage.getItem('code-flux-v2-sidebar-collapsed') === 'true'
   const stored = Number(window.localStorage.getItem('code-flux-v2-sidebar-width') ?? '')
   if (Number.isFinite(stored) && stored >= 220 && stored <= 400) expandedSidebarWidth.value = stored
   void initialize()
+  document.addEventListener('click', handleDocumentPointer)
+})
+
+watch(isExplorerRoute, (isRoute) => {
+  if (!isRoute) {
+    closeExplorerMenus()
+  }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentPointer)
 })
 </script>
 
@@ -303,8 +383,109 @@ onMounted(() => {
           </button>
         </template>
         <span class="content-chrome__title">{{ currentSectionLabel }}</span>
+        <template v-if="isExplorerRoute">
+          <div class="content-chrome__explorer-toolbar">
+            <div class="content-chrome__toolbar-group">
+              <button
+                class="content-chrome__pill"
+                type="button"
+                @click="toggleExplorerTimeMenu"
+              >
+                <CalendarDays :size="13" />
+                <span>{{ explorer.timeLabel }}</span>
+                <ChevronDown :size="13" />
+              </button>
+              <button
+                class="content-chrome__pill"
+                type="button"
+                @click="toggleExplorerRepoMenu"
+              >
+                <LayoutGrid :size="13" />
+                <span>{{ explorer.repoLabel }}</span>
+                <ChevronDown :size="13" />
+              </button>
+              <button class="content-chrome__ghost" type="button" @click="toggleExplorerFilterMenu">
+                <Filter :size="13" />
+                <span>+ Filter</span>
+              </button>
+            </div>
+            <div
+              v-if="explorerTimeMenuOpen"
+              class="content-chrome__explorer-menu"
+              :style="{ top: explorerTimeMenuStyle.top, left: explorerTimeMenuStyle.left }"
+            >
+              <button
+                v-for="option in explorerRangeOptions"
+                :key="option.id"
+                type="button"
+                @click="explorerTimeMenuOpen = false; explorer.setRangePreset(option.id)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+            <div
+              v-if="explorerRepoMenuOpen"
+              class="content-chrome__explorer-menu"
+              :style="{ top: explorerRepoMenuStyle.top, left: explorerRepoMenuStyle.left }"
+            >
+              <button
+                class="content-chrome__menu-option"
+                :aria-pressed="explorer.selectedRepoIds.length === 0"
+                type="button"
+                @click="explorer.setRepoFilters([])"
+              >
+                <Check v-if="explorer.selectedRepoIds.length === 0" :size="12" />
+                <span v-else class="content-chrome__menu-check-placeholder" />
+                All repositories
+              </button>
+              <button
+                v-for="repo in dashboard.bootstrap?.repos ?? []"
+                :key="repo.id"
+                class="content-chrome__menu-option"
+                :aria-pressed="explorer.selectedRepoIds.includes(repo.id)"
+                type="button"
+                @click="explorer.toggleRepoFilter(repo.id)"
+              >
+                <Check v-if="explorer.selectedRepoIds.includes(repo.id)" :size="12" />
+                <span v-else class="content-chrome__menu-check-placeholder" />
+                {{ repo.displayName }}
+              </button>
+              <button
+                class="content-chrome__menu-reset"
+                type="button"
+                @click="explorer.clearRepoFilters()"
+              >
+                Clear selections
+              </button>
+            </div>
+            <div
+              v-if="explorerFilterMenuOpen"
+              class="content-chrome__explorer-menu"
+              :style="{ top: explorerFilterMenuStyle.top, left: explorerFilterMenuStyle.left }"
+            >
+              <button type="button" disabled>
+                Commit/author filters coming soon
+              </button>
+              <button
+                type="button"
+                @click="explorerFilterMenuOpen = false"
+              >
+                Open advanced filters…
+              </button>
+            </div>
+          </div>
+        </template>
         <div class="content-chrome__spacer" />
         <div class="content-chrome__actions">
+          <button
+            v-if="isExplorerRoute"
+            class="content-chrome__ghost content-chrome__ghost--accent"
+            type="button"
+            @click="explorer.openNewAnnotation()"
+          >
+            <MessageSquarePlus :size="13" />
+            <span>Annotations</span>
+          </button>
           <LoaderCircle v-if="dashboard.syncStatus?.running" class="spin" :size="14" style="color: var(--cf-accent)" />
         </div>
       </header>

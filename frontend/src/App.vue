@@ -453,7 +453,7 @@ onBeforeUnmount(() => {
               <button
                 class="content-chrome__menu-reset"
                 type="button"
-                @click="explorer.clearRepoFilters()"
+                @click="explorer.setRepoFilters([])"
               >
                 Clear selections
               </button>

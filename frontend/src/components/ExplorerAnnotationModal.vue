@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
-import { CircleX, Plus, Tag } from 'lucide-vue-next'
+import { reactive, ref, watch } from 'vue'
+import { Tag, Flame, Folder, MessageSquare, X, Plus, GitCommitHorizontal } from 'lucide-vue-next'
 import type { AnnotationTypeV2, AnnotationV2 } from '../types/workspace'
 
 const props = defineProps<{
@@ -17,115 +17,143 @@ const emit = defineEmits<{
   (event: 'delete'): void
 }>()
 
+type TypeOption = { value: AnnotationTypeV2; label: string; icon: typeof Tag }
+
+const typeOptions: TypeOption[] = [
+  { value: 'feature', label: 'Feature', icon: Tag },
+  { value: 'incident', label: 'Incident', icon: Flame },
+  { value: 'project', label: 'Project', icon: Folder },
+  { value: 'note', label: 'Note', icon: MessageSquare },
+]
+
 const form = reactive({
   name: '',
   description: '',
   annotationType: 'note' as AnnotationTypeV2,
-  tagsInput: '',
 })
-
-const tagList = computed(() =>
-  form.tagsInput
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean),
-)
+const tags = ref<string[]>([])
+const tagInput = ref('')
 
 watch(
   () => [props.open, props.annotation] as const,
   ([open, annotation]) => {
-    if (!open) {
-      return
-    }
+    if (!open) return
     form.name = annotation?.name ?? annotation?.title ?? ''
     form.description = annotation?.description ?? annotation?.body ?? ''
     form.annotationType = annotation?.annotationType ?? 'note'
-    form.tagsInput = annotation?.tags.join(', ') ?? ''
+    tags.value = annotation?.tags ? [...annotation.tags] : []
+    tagInput.value = ''
   },
   { immediate: true },
 )
+
+function addTag() {
+  const v = tagInput.value.trim().replace(/,$/, '').trim()
+  if (!v) return
+  if (!tags.value.includes(v)) tags.value.push(v)
+  tagInput.value = ''
+}
+function onTagKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault()
+    addTag()
+  }
+}
+function removeTag(tag: string) {
+  tags.value = tags.value.filter((t) => t !== tag)
+}
+
+function handleSave() {
+  emit('save', {
+    name: form.name,
+    description: form.description,
+    annotationType: form.annotationType,
+    tags: tags.value,
+  })
+}
 </script>
 
 <template>
-  <div v-if="open" class="annotation-modal-shell">
-    <button class="annotation-modal-shell__backdrop" type="button" @click="emit('close')" />
-    <section class="annotation-modal" role="dialog" aria-modal="true">
-      <header class="annotation-modal__header">
-        <div>
-          <p class="annotation-modal__eyebrow">Annotation</p>
-          <h2>{{ mode === 'edit' ? 'Edit annotation' : 'Create annotation' }}</h2>
-        </div>
-        <button class="annotation-modal__icon" type="button" @click="emit('close')">
-          <CircleX :size="16" />
+  <div v-if="open" class="am-shell" role="dialog" aria-modal="true">
+    <button class="am-shell__backdrop" type="button" @click="emit('close')" />
+    <section class="am-modal">
+      <header class="am-header">
+        <Tag :size="18" color="#6366f1" />
+        <h2 class="am-header__title">{{ mode === 'edit' ? 'Edit annotation' : 'Create annotation' }}</h2>
+        <button class="am-header__close" type="button" @click="emit('close')">
+          <X :size="16" />
         </button>
       </header>
 
-      <div class="annotation-modal__context">
-        <span class="annotation-modal__context-kicker">Context</span>
-        <strong>{{ day }}</strong>
-        <p>{{ commitLabel || 'Day-level annotation' }}</p>
+      <div class="am-body">
+        <div class="am-context">
+          <GitCommitHorizontal :size="14" color="#94a0b8" />
+          <div class="am-context__body">
+            <span class="am-context__title">{{ day }}</span>
+            <span class="am-context__meta">{{ commitLabel || 'Day-level annotation' }}</span>
+          </div>
+        </div>
+
+        <div class="am-field">
+          <span class="am-field__label">Annotation type</span>
+          <div class="am-types">
+            <button
+              v-for="option in typeOptions"
+              :key="option.value"
+              class="am-type-pill"
+              :class="{ 'am-type-pill--active': form.annotationType === option.value }"
+              type="button"
+              @click="form.annotationType = option.value"
+            >
+              <component :is="option.icon" :size="13" />
+              <span>{{ option.label }}</span>
+            </button>
+          </div>
+        </div>
+
+        <label class="am-field">
+          <span class="am-field__label">Name</span>
+          <input v-model="form.name" class="am-input" placeholder="Spike note" />
+        </label>
+
+        <label class="am-field">
+          <span class="am-field__label">Description</span>
+          <textarea v-model="form.description" class="am-textarea" placeholder="What changed and why it matters." />
+        </label>
+
+        <div class="am-field">
+          <span class="am-field__label">Tags (optional)</span>
+          <div class="am-tags">
+            <span v-for="tag in tags" :key="tag" class="am-chip">
+              <span>{{ tag }}</span>
+              <button class="am-chip__remove" type="button" @click="removeTag(tag)">
+                <X :size="10" />
+              </button>
+            </span>
+            <span class="am-tag-input-wrap">
+              <Plus :size="10" color="#94a0b8" />
+              <input
+                v-model="tagInput"
+                placeholder="Add tag"
+                @keydown="onTagKeydown"
+                @blur="addTag"
+              />
+            </span>
+          </div>
+        </div>
       </div>
 
-      <section class="annotation-modal__section">
-        <span class="annotation-modal__section-label">Type</span>
-        <div class="annotation-modal__type-grid">
-          <button
-            v-for="option in ['feature', 'incident', 'project', 'note'] as const"
-            :key="option"
-            class="annotation-modal__type-pill"
-            :class="{ 'annotation-modal__type-pill--active': form.annotationType === option }"
-            type="button"
-            @click="form.annotationType = option"
-          >
-            {{ option }}
-          </button>
-        </div>
-      </section>
-
-      <label class="annotation-modal__field">
-        <span>Name</span>
-        <input v-model="form.name" placeholder="Spike note" />
-      </label>
-
-      <label class="annotation-modal__field">
-        <span>Description</span>
-        <textarea v-model="form.description" rows="5" placeholder="What changed and why it matters." />
-      </label>
-
-      <section class="annotation-modal__section">
-        <div class="annotation-modal__section-row">
-          <span class="annotation-modal__section-label">Tags</span>
-          <span class="annotation-modal__pending">Backend support pending</span>
-        </div>
-        <div class="annotation-modal__tag-input">
-          <Tag :size="14" />
-          <input v-model="form.tagsInput" placeholder="frontend, release, risk" />
-          <button class="annotation-modal__tag-add" type="button" aria-label="Add tag" @click.prevent>
-            <Plus :size="14" />
-          </button>
-        </div>
-        <div class="annotation-modal__chips">
-          <span v-for="tag in tagList" :key="tag" class="annotation-modal__chip">{{ tag }}</span>
-        </div>
-      </section>
-
-      <footer class="annotation-modal__footer">
-        <button class="annotation-modal__ghost" type="button" @click="emit('close')">Cancel</button>
-        <button v-if="mode === 'edit'" class="annotation-modal__danger" type="button" @click="emit('delete')">Delete</button>
-        <button
-          class="annotation-modal__primary"
-          type="button"
-          @click="emit('save', { name: form.name, description: form.description, annotationType: form.annotationType, tags: tagList })"
-        >
-          Save annotation
-        </button>
+      <footer class="am-footer">
+        <button v-if="mode === 'edit'" class="am-btn am-btn--delete" type="button" @click="emit('delete')">Delete</button>
+        <button class="am-btn am-btn--cancel" type="button" @click="emit('close')">Cancel</button>
+        <button class="am-btn am-btn--save" type="button" @click="handleSave">Save annotation</button>
       </footer>
     </section>
   </div>
 </template>
 
 <style scoped>
-.annotation-modal-shell {
+.am-shell {
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -133,204 +161,231 @@ watch(
   place-items: center;
   padding: 24px;
 }
-
-.annotation-modal-shell__backdrop {
+.am-shell__backdrop {
   position: absolute;
   inset: 0;
   border: 0;
-  background: rgb(15 23 42 / 0.42);
+  background: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
 }
-
-.annotation-modal {
+.am-modal {
   position: relative;
   z-index: 1;
-  width: min(460px, 100%);
-  display: grid;
-  gap: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  width: 480px;
+  max-width: 100%;
+  height: 520px;
+  max-height: calc(100vh - 48px);
   border-radius: 12px;
-  padding: 14px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: none;
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-
-.annotation-modal__header,
-.annotation-modal__section-row,
-.annotation-modal__footer {
+.am-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  height: 52px;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  flex-shrink: 0;
 }
-
-.annotation-modal__eyebrow,
-.annotation-modal__section-label,
-.annotation-modal__context-kicker,
-.annotation-modal__pending {
-  margin: 0;
-  color: #6b7280;
-  font-size: 10px;
+.am-header__title {
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  color: #162033;
+  margin: 0;
 }
-
-.annotation-modal__header h2 {
-  margin: 4px 0 0;
-  color: #111827;
-  font-size: 14px;
-  line-height: 1.1;
-}
-
-.annotation-modal__icon {
+.am-header__close {
+  margin-left: auto;
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
   border: 0;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #334155;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a0b8;
+  cursor: pointer;
 }
-
-.annotation-modal__context {
-  display: grid;
-  gap: 3px;
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: rgba(99, 102, 241, 0.08);
-}
-
-.annotation-modal__context strong {
-  color: #312e81;
-  font-size: 12px;
-}
-
-.annotation-modal__context p {
-  margin: 0;
-  color: #4f46e5;
-  font-size: 11px;
-}
-
-.annotation-modal__section {
-  display: grid;
-  gap: 10px;
-}
-
-.annotation-modal__type-grid {
+.am-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 16px;
 }
-
-.annotation-modal__type-pill {
-  border: 1px solid #dbe3f0;
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: #fff;
-  color: #334155;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.annotation-modal__type-pill--active {
-  border-color: #6366f1;
-  background: #eef2ff;
-  color: #4338ca;
-}
-
-.annotation-modal__field {
-  display: grid;
-  gap: 8px;
-}
-
-.annotation-modal__field span {
-  color: #334155;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.annotation-modal__field input,
-.annotation-modal__field textarea,
-.annotation-modal__tag-input input {
-  width: 100%;
-  border: 1px solid #dbe3f0;
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: #fff;
-  color: #111827;
-  font: inherit;
-}
-
-.annotation-modal__tag-input {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+.am-context {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  border: 1px solid #dbe3f0;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 8px;
-  padding: 5px 8px;
+  background: #f8f9fa;
 }
-
-.annotation-modal__tag-input input {
-  border: 0;
-  padding: 0;
-  outline: 0;
+.am-context__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
-
-.annotation-modal__tag-add {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 0;
-  border-radius: 7px;
-  background: rgba(99, 102, 241, 0.08);
-  color: #4f46e5;
+.am-context__title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #162033;
 }
-
-.annotation-modal__chips {
+.am-context__meta {
+  font-size: 11px;
+  color: #94a0b8;
+}
+.am-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.am-field__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #162033;
+}
+.am-types {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.am-type-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: transparent;
+  color: #61708d;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.am-type-pill--active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #ffffff;
+  font-weight: 600;
+}
+.am-input,
+.am-textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #162033;
+  font: inherit;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.am-input {
+  height: 36px;
+  padding: 0 12px;
+}
+.am-textarea {
+  min-height: 72px;
+  padding: 10px 12px;
+  resize: none;
+  line-height: 1.5;
+}
+.am-input:focus,
+.am-textarea:focus {
+  outline: none;
+  border: 1.5px solid #6366f1;
+}
+.am-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  align-items: center;
 }
-
-.annotation-modal__chip {
-  border-radius: 999px;
-  padding: 4px 8px;
+.am-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
   background: rgba(99, 102, 241, 0.08);
-  color: #4f46e5;
+  color: #6366f1;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
 }
-
-.annotation-modal__footer {
-  padding-top: 4px;
-}
-
-.annotation-modal__ghost,
-.annotation-modal__danger,
-.annotation-modal__primary {
+.am-chip__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
   border: 0;
+  background: transparent;
+  color: #6366f1;
+  cursor: pointer;
+  padding: 0;
+}
+.am-tag-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: transparent;
+}
+.am-tag-input-wrap input {
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: #162033;
+  width: 80px;
+}
+.am-tag-input-wrap input::placeholder {
+  color: #94a0b8;
+}
+.am-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 60px;
+  padding: 0 20px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+.am-btn {
   border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 12px;
-  font-weight: 700;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
 }
-
-.annotation-modal__ghost {
-  background: #f1f5f9;
-  color: #334155;
+.am-btn--delete {
+  margin-right: auto;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: transparent;
+  color: #ef4444;
 }
-
-.annotation-modal__danger {
-  background: #fef2f2;
-  color: #b91c1c;
+.am-btn--cancel {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: transparent;
+  color: #61708d;
 }
-
-.annotation-modal__primary {
-  background: #4f46e5;
-  color: #fff;
-  margin-left: auto;
+.am-btn--save {
+  border: 0;
+  background: #6366f1;
+  color: #ffffff;
+  font-weight: 600;
 }
 </style>

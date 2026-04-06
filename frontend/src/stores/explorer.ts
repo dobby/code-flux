@@ -261,10 +261,6 @@ export const useExplorerStore = defineStore('explorer', () => {
     }
   }
 
-  function clearRepoFilters() {
-    selectedRepoIds.value = []
-  }
-
   function openNewAnnotation() {
     editingAnnotation.value = null
     annotationDialogOpen.value = true
@@ -385,7 +381,6 @@ export const useExplorerStore = defineStore('explorer', () => {
     setRangePreset,
     setRepoFilters,
     toggleRepoFilter,
-    clearRepoFilters,
     openNewAnnotation,
     editAnnotation,
     closeAnnotationDialog,

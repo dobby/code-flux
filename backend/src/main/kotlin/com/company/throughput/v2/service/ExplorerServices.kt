@@ -5,12 +5,18 @@ import com.company.throughput.v2.model.CommitDetailResponse
 import com.company.throughput.v2.model.CommitFileChangeDto
 import com.company.throughput.v2.model.EditorLaunchRequest
 import com.company.throughput.v2.model.EditorLaunchResponse
+import com.company.throughput.v2.model.FileOpenRequest
+import com.company.throughput.v2.model.FileOpenResponse
 import com.company.throughput.v2.repo.AnnotationV2Repository
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Service
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeParseException
 
 private data class CommitRow(
     val repoId: String,
@@ -21,6 +27,16 @@ private data class CommitRow(
     val committedAt: Instant,
     val subject: String,
 )
+
+private data class RepoPathResolution(
+    val repoId: String,
+    val commitSha: String,
+    val repoPath: Path? = null,
+    val reason: String? = null,
+) {
+    val available: Boolean
+        get() = reason == null && repoPath != null
+}
 
 @Service
 class ExplorerService(
@@ -98,32 +114,17 @@ class ExplorerService(
     }
 
     fun launchEditor(request: EditorLaunchRequest): EditorLaunchResponse {
-        val repo = resolvedDashboardConfig.repos.firstOrNull { it.id == request.repoId }
-            ?: return EditorLaunchResponse(
-                available = false,
-                reason = "Repository ${request.repoId} is not configured",
-                repoId = request.repoId,
-                commitSha = request.commitSha,
-            )
-
-        val repoLocalPath = repo.localPath?.trim()?.takeIf { it.isNotBlank() }
-            ?: return EditorLaunchResponse(
-                available = false,
-                reason = "Repository ${repo.id} does not define a localPath",
-                repoId = request.repoId,
-                commitSha = request.commitSha,
-            )
-
-        val repoPath = Path.of(repoLocalPath).toAbsolutePath().normalize()
-        if (!Files.exists(repoPath) || !Files.isDirectory(repoPath)) {
+        val repoResolution = resolveRepoPath(request.repoId, request.commitSha)
+        if (!repoResolution.available) {
             return EditorLaunchResponse(
                 available = false,
-                reason = "Repository path does not exist: $repoPath",
+                reason = repoResolution.reason,
                 repoId = request.repoId,
                 commitSha = request.commitSha,
-                repoPath = repoPath.toString(),
+                repoPath = repoResolution.repoPath?.toString(),
             )
         }
+        val repoPath = repoResolution.repoPath ?: error("Resolved repository path missing")
 
         val editorCommand = resolvedDashboardConfig.app.editorCommand?.trim()?.takeIf { it.isNotBlank() }
             ?: return EditorLaunchResponse(
@@ -134,15 +135,7 @@ class ExplorerService(
                 repoPath = repoPath.toString(),
             )
 
-        val resolvedFilePaths = if (request.filePaths.isEmpty()) {
-            listOf(repoPath.toString())
-        } else {
-            request.filePaths.map { candidate ->
-                val resolved = repoPath.resolve(candidate).normalize()
-                require(resolved.startsWith(repoPath)) { "EDITOR_PATH_OUTSIDE_REPO: $candidate" }
-                resolved.toString()
-            }
-        }
+        val resolvedFilePaths = resolveFilePaths(repoPath, request.filePaths)
 
         return EditorLaunchResponse(
             available = true,
@@ -154,10 +147,112 @@ class ExplorerService(
         )
     }
 
-    private fun parseTimestamp(value: String): Instant =
-        if (value.contains("T")) {
-            Instant.parse(if (value.endsWith("Z")) value else "${value}Z")
-        } else {
-            Instant.parse(value.replace(" ", "T") + "Z")
+    fun openFile(request: FileOpenRequest): FileOpenResponse {
+        val repoResolution = resolveRepoPath(request.repoId, request.commitSha)
+        if (!repoResolution.available) {
+            return FileOpenResponse(
+                available = false,
+                reason = repoResolution.reason,
+                repoId = request.repoId,
+                commitSha = request.commitSha,
+                filePath = request.filePath,
+                repoPath = repoResolution.repoPath?.toString(),
+            )
         }
+        val repoPath = repoResolution.repoPath ?: error("Resolved repository path missing")
+
+        val normalizedFilePath = request.filePath.trim()
+        if (normalizedFilePath.isEmpty()) {
+            return FileOpenResponse(
+                available = false,
+                reason = "filePath is required",
+                repoId = request.repoId,
+                commitSha = request.commitSha,
+                filePath = request.filePath,
+                repoPath = repoPath.toString(),
+            )
+        }
+
+        val resolvedPath = resolveFilePath(repoPath, normalizedFilePath)
+        if (resolvedPath == null || !Files.exists(resolvedPath)) {
+            return FileOpenResponse(
+                available = false,
+                reason = "Resolved file path does not exist: $normalizedFilePath",
+                repoId = request.repoId,
+                commitSha = request.commitSha,
+                filePath = request.filePath,
+                repoPath = repoPath.toString(),
+            )
+        }
+
+        return FileOpenResponse(
+            available = true,
+            repoId = request.repoId,
+            commitSha = request.commitSha,
+            filePath = normalizedFilePath,
+            repoPath = repoPath.toString(),
+            resolvedPath = resolvedPath.toString(),
+        )
+    }
+
+    private fun resolveRepoPath(repoId: String, commitSha: String): RepoPathResolution {
+        val repo = resolvedDashboardConfig.repos.firstOrNull { it.id == repoId }
+            ?: return RepoPathResolution(
+                repoId = repoId,
+                commitSha = commitSha,
+                reason = "Repository $repoId is not configured",
+            )
+
+        val repoLocalPath = repo.localPath?.trim()?.takeIf { it.isNotBlank() }
+            ?: return RepoPathResolution(
+                repoId = repoId,
+                commitSha = commitSha,
+                reason = "Repository ${repo.id} does not define a localPath",
+            )
+
+        val repoPath = Path.of(repoLocalPath).toAbsolutePath().normalize()
+        if (!Files.exists(repoPath) || !Files.isDirectory(repoPath)) {
+            return RepoPathResolution(
+                repoId = repoId,
+                commitSha = commitSha,
+                repoPath = repoPath,
+                reason = "Repository path does not exist: $repoPath",
+            )
+        }
+
+        return RepoPathResolution(
+            repoId = repoId,
+            commitSha = commitSha,
+            repoPath = repoPath,
+        )
+    }
+
+    private fun resolveFilePaths(repoPath: Path, filePaths: List<String>): List<String> =
+        if (filePaths.isEmpty()) {
+            listOf(repoPath.toString())
+        } else {
+            filePaths.map { candidate ->
+                resolveFilePath(repoPath, candidate)?.toString()
+                    ?: throw IllegalArgumentException("EDITOR_PATH_OUTSIDE_REPO: $candidate")
+            }
+        }
+
+    private fun resolveFilePath(repoPath: Path, candidate: String): Path? {
+        val normalizedCandidate = candidate.trim().takeIf { it.isNotEmpty() } ?: return null
+        val resolved = repoPath.resolve(normalizedCandidate).normalize()
+        return resolved.takeIf { it.startsWith(repoPath) }
+    }
+
+    private fun parseTimestamp(value: String): Instant {
+        val normalized = value.trim()
+        return try {
+            Instant.parse(normalized)
+        } catch (_: DateTimeParseException) {
+            try {
+                OffsetDateTime.parse(normalized).toInstant()
+            } catch (_: DateTimeParseException) {
+                LocalDateTime.parse(normalized.replace(" ", "T")).atOffset(ZoneOffset.UTC).toInstant()
+            }
+        }
+    }
 }

@@ -130,7 +130,12 @@ object GitFixtureSupport {
     fun currentSha(repo: Path): String =
         runGit(repo, listOf("rev-parse", "HEAD")).trim()
 
-    fun createAppContext(project: GitTestProject, dataDir: Path, repoId: String = "fixture"): TestAppContext {
+    fun createAppContext(
+        project: GitTestProject,
+        dataDir: Path,
+        repoId: String = "fixture",
+        excludePathGlobs: List<String> = emptyList(),
+    ): TestAppContext {
         val resolvedConfig = DashboardConfigFactory().resolvedDashboardConfig(
             appProperties = AppProperties(
                 baseUrl = "http://localhost:8086",
@@ -149,7 +154,7 @@ object GitFixtureSupport {
                         productCode = "TEST",
                         branchPatterns = listOf("main", "feature/*", "release/*"),
                         excludeBranchPatterns = emptyList(),
-                        excludePathGlobs = emptyList(),
+                        excludePathGlobs = excludePathGlobs,
                     ),
                 ),
             ),

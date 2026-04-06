@@ -84,6 +84,12 @@ export function stopSync() {
   })
 }
 
+export function resetSyncData() {
+  return request<{ accepted: boolean; running: boolean; status: string }>('/api/sync/reset', {
+    method: 'POST',
+  })
+}
+
 export function getFilterOptions() {
   return request<FilterOptionsResponse>('/api/filters/options')
 }

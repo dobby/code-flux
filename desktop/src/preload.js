@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld('codeFluxSecure', {
   openCommitInEditor: async (request) => {
     return ipcRenderer.invoke('editor-launch-open', request)
   },
+  openCommitFile: async (request) => {
+    return ipcRenderer.invoke('shell-open-commit-file', request)
+  },
 })

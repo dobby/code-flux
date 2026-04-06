@@ -9,6 +9,7 @@ import {
   getSyncStatus,
   listAnnotations,
   queryAnalytics,
+  resetSyncData,
   runSync,
   stopSync,
   updateAnnotation,
@@ -303,6 +304,30 @@ export const useDashboardStore = defineStore('dashboard', () => {
     }
   }
 
+  async function resetSyncedData() {
+    error.value = null
+    try {
+      loading.sync = true
+      const response = await resetSyncData()
+      await refreshSyncStatus()
+      if (!response.accepted) {
+        error.value = 'Stop the current sync before resetting data.'
+        return
+      }
+      analytics.value = null
+      comparison.value = null
+      comparisonAnalytics.value = null
+      annotations.value = []
+      await Promise.all([refreshAnalytics(), refreshAnnotations()])
+    } catch (caught) {
+      error.value = toMessage(caught)
+    } finally {
+      if (!syncStatus.value?.running) {
+        loading.sync = false
+      }
+    }
+  }
+
   function openCreateAnnotation(day?: string) {
     draftAnnotation.annotationId = null
     draftAnnotation.day = day ?? controls.dateRange.to
@@ -382,6 +407,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     refreshAnalytics,
     refreshAnnotations,
     refreshSyncStatus,
+    resetSyncedData,
     removeAnnotation,
     saveAnnotation,
     stopRunningSync,

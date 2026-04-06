@@ -9,6 +9,7 @@ import com.company.throughput.v2.model.DayDrilldownRequest
 import com.company.throughput.v2.model.ExecuteQueryRequest
 import com.company.throughput.v2.model.FeatureFlagsDto
 import com.company.throughput.v2.model.EditorLaunchRequest
+import com.company.throughput.v2.model.FileOpenRequest
 import com.company.throughput.v2.model.JiraSecretRequest
 import com.company.throughput.v2.model.JiraSettingsResponse
 import com.company.throughput.v2.model.LayoutUpdateItem
@@ -256,6 +257,10 @@ class ExplorerV2Controller(
     @PostMapping("/open-in-editor")
     fun openInEditor(@Valid @RequestBody request: EditorLaunchRequest) =
         explorerService.launchEditor(request)
+
+    @PostMapping("/open-file")
+    fun openFile(@Valid @RequestBody request: FileOpenRequest) =
+        explorerService.openFile(request)
 }
 
 @RestController

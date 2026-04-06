@@ -51,7 +51,7 @@ function formatFilter(filter: ToolbarFilter) {
 <template>
   <header class="page-toolbar">
     <div class="page-toolbar__controls">
-      <span class="page-toolbar__title">{{ title }}</span>
+      <span class="page-toolbar__title" data-testid="page-toolbar-title">{{ title }}</span>
       <div class="page-toolbar__divider" aria-hidden="true" />
 
       <button class="button button--ghost" type="button" data-testid="page-time-range" @click="emit('open-time-range')">

@@ -37,6 +37,21 @@ data class SyncRunEventRecord(
 class SyncStateRepository(
     private val jdbcClient: JdbcClient,
 ) {
+    fun resetSyncState() {
+        jdbcClient.sql(
+            """
+            UPDATE repo_sync_state
+            SET
+              last_successful_sync_run_id = NULL,
+              last_successful_synced_at = NULL,
+              last_seen_commit_sha = NULL,
+              last_error_message = NULL
+            """.trimIndent(),
+        ).update()
+        jdbcClient.sql("DELETE FROM sync_run_events").update()
+        jdbcClient.sql("DELETE FROM sync_run").update()
+    }
+
     fun abandonIncompleteRuns(message: String) {
         jdbcClient.sql(
             """

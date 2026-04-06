@@ -38,6 +38,8 @@ const progressText = computed(() => {
   return dashboard.syncStatus?.lastRun?.message ?? 'Repository history is ready for the next run.'
 })
 
+const canReset = computed(() => !isRunning.value && !dashboard.loading.sync)
+
 const logRows = computed<SyncRow[]>(() => {
   if (dashboard.syncStatus?.logEntries.length) {
     return dashboard.syncStatus.logEntries.map((entry) => ({
@@ -104,6 +106,16 @@ async function handleSyncAction() {
   }
   await dashboard.triggerSync()
 }
+
+async function handleResetAction() {
+  const confirmed = window.confirm(
+    'Reset all synced throughput data? This clears ingested commits, files, aggregates, and sync history so you can resync from scratch.',
+  )
+  if (!confirmed) {
+    return
+  }
+  await dashboard.resetSyncedData()
+}
 </script>
 
 <template>
@@ -116,19 +128,31 @@ async function handleSyncAction() {
           {{ progressText }}
         </p>
       </div>
-      <button
-        class="sync-view__action"
-        :class="isRunning ? 'sync-view__action--danger' : 'sync-view__action--primary'"
-        data-testid="sync-button"
-        :disabled="!!dashboard.currentSync?.stopRequested"
-        type="button"
-        @click="handleSyncAction"
-      >
-        <LoaderCircle v-if="dashboard.currentSync?.stopRequested" class="spin" :size="16" />
-        <Square v-else-if="isRunning" :size="15" />
-        <RefreshCcw v-else :size="16" />
-        <span>{{ isRunning ? 'Stop sync' : 'Run sync' }}</span>
-      </button>
+      <div class="sync-view__actions">
+        <button
+          class="sync-view__action sync-view__action--ghost"
+          data-testid="sync-reset-button"
+          :disabled="!canReset"
+          type="button"
+          @click="handleResetAction"
+        >
+          <TimerReset :size="16" />
+          <span>Reset data</span>
+        </button>
+        <button
+          class="sync-view__action"
+          :class="isRunning ? 'sync-view__action--danger' : 'sync-view__action--primary'"
+          data-testid="sync-button"
+          :disabled="!!dashboard.currentSync?.stopRequested"
+          type="button"
+          @click="handleSyncAction"
+        >
+          <LoaderCircle v-if="dashboard.currentSync?.stopRequested" class="spin" :size="16" />
+          <Square v-else-if="isRunning" :size="15" />
+          <RefreshCcw v-else :size="16" />
+          <span>{{ isRunning ? 'Stop sync' : 'Run sync' }}</span>
+        </button>
+      </div>
     </header>
 
     <section class="sync-view__banner" :class="{ 'sync-view__banner--running': isRunning }">
@@ -234,6 +258,12 @@ async function handleSyncAction() {
   cursor: pointer;
 }
 
+.sync-view__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .sync-view__action--primary {
   background: #4f46e5;
   color: #fff;
@@ -242,6 +272,12 @@ async function handleSyncAction() {
 .sync-view__action--danger {
   background: #ef4444;
   color: #fff;
+}
+
+.sync-view__action--ghost {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: #fff;
+  color: #334155;
 }
 
 .sync-view__banner {

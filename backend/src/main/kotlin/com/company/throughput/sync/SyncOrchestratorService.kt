@@ -80,6 +80,16 @@ class SyncOrchestratorService(
     fun requestStop(): Boolean = syncRuntimeState.requestStop()
 
     @Transactional
+    fun resetSyncData(): Boolean {
+        if (syncRuntimeState.isRunning()) {
+            return false
+        }
+        rawFactRepository.clearThroughputFacts()
+        syncStateRepository.resetSyncState()
+        return true
+    }
+
+    @Transactional
     fun executeIncrementalSync(syncRunId: Long): SyncRunSummary {
         gitEnvironmentService.verify()
         var hadFailures = false
@@ -211,6 +221,7 @@ class SyncOrchestratorService(
             }
 
             val classifiedFiles = gitHistoryExtractor.readFileStats(mirrorPath, commitSha)
+                .filterNot { classificationService.isPathExcluded(repo, it.filePath) }
                 .map { classificationService.classify(repo, it) }
             fileCount += classifiedFiles.size
             rawFactRepository.insertCommitFiles(

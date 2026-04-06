@@ -58,7 +58,7 @@ class ClassificationService(
 
     fun isPathExcluded(repo: RepoConfig, filePath: String): Boolean {
         val normalizedPath = filePath.trimStart('/')
-        return repo.excludePathGlobs.any { pattern ->
+        return isDefaultExcludedPath(normalizedPath) || repo.excludePathGlobs.any { pattern ->
             FileSystems.getDefault().getPathMatcher("glob:$pattern").matches(Path.of(normalizedPath))
         }
     }
@@ -105,6 +105,33 @@ class ClassificationService(
         val lowercasePath = path.lowercase(Locale.getDefault())
         return lowercasePath.contains("/generated/") ||
             lowercasePath.startsWith("generated/") ||
-            lowercasePath.contains("/build/generated/")
+            lowercasePath.contains("/build/generated/") ||
+            isDefaultExcludedPath(lowercasePath)
+    }
+
+    private fun isDefaultExcludedPath(path: String): Boolean {
+        val lowercasePath = path.lowercase(Locale.getDefault())
+        val pathSegments = lowercasePath.split('/').filter { it.isNotBlank() }
+        return pathSegments.any { it in DEFAULT_EXCLUDED_DIRECTORY_NAMES } ||
+            DEFAULT_EXCLUDED_FILE_SUFFIXES.any { lowercasePath.endsWith(it) }
+    }
+
+    companion object {
+        private val DEFAULT_EXCLUDED_DIRECTORY_NAMES = setOf(
+            "dist",
+            "build",
+            "target",
+            "out",
+            "coverage",
+            "node_modules",
+            ".next",
+            ".nuxt",
+        )
+
+        private val DEFAULT_EXCLUDED_FILE_SUFFIXES = listOf(
+            ".jar",
+            ".war",
+            ".class",
+        )
     }
 }

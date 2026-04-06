@@ -878,6 +878,8 @@ class DayDrilldownService(
                 "language" -> "f.language"
                 "category" -> "f.category"
                 "subtype" -> "f.subtype"
+                "productCode" -> "COALESCE(NULLIF(f.product_code, ''), 'unknown')"
+                "cohort" -> "COALESCE(NULLIF(a.cohort, ''), 'unknown')"
                 else -> null
             }
             if (expression != null) {

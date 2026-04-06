@@ -720,6 +720,12 @@ data class EditorLaunchRequest(
     val filePaths: List<String> = emptyList(),
 )
 
+data class FileOpenRequest(
+    val repoId: String,
+    val commitSha: String,
+    val filePath: String,
+)
+
 data class EditorLaunchResponse(
     val available: Boolean,
     val reason: String? = null,
@@ -728,4 +734,15 @@ data class EditorLaunchResponse(
     val repoPath: String? = null,
     val editorCommand: String? = null,
     val filePaths: List<String> = emptyList(),
+)
+
+data class FileOpenResponse(
+    val available: Boolean,
+    val opened: Boolean = false,
+    val reason: String? = null,
+    val repoId: String,
+    val commitSha: String,
+    val filePath: String,
+    val repoPath: String? = null,
+    val resolvedPath: String? = null,
 )

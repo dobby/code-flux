@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.GetMapping
 class SpaForwardController {
     @GetMapping(
         value = [
+            "/sync",
+            "/explorer",
+            "/explorer/**",
             "/widgets",
             "/widgets/**",
             "/pages/**",

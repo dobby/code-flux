@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { Tag, Flame, Folder, MessageSquare, X, Plus, GitCommitHorizontal } from 'lucide-vue-next'
 import type { AnnotationTypeV2, AnnotationV2 } from '../types/workspace'
+
+let modalInstanceSeed = 0
 
 const props = defineProps<{
   open: boolean
@@ -16,6 +18,16 @@ const emit = defineEmits<{
   (event: 'save', payload: { name: string; description: string; annotationType: AnnotationTypeV2; tags: string[] }): void
   (event: 'delete'): void
 }>()
+
+const instanceId = ++modalInstanceSeed
+const titleId = `explorer-annotation-modal-title-${instanceId}`
+const contextId = `explorer-annotation-modal-context-${instanceId}`
+const typeGroupId = `explorer-annotation-modal-type-${instanceId}`
+const nameInputId = `explorer-annotation-modal-name-${instanceId}`
+const descriptionInputId = `explorer-annotation-modal-description-${instanceId}`
+const modalRef = ref<HTMLElement | null>(null)
+const nameInputRef = ref<HTMLInputElement | null>(null)
+let previouslyFocusedElement: HTMLElement | null = null
 
 type TypeOption = { value: AnnotationTypeV2; label: string; icon: typeof Tag }
 
@@ -33,6 +45,30 @@ const form = reactive({
 })
 const tags = ref<string[]>([])
 const tagInput = ref('')
+const canSave = computed(() => form.name.trim().length > 0)
+
+function focusInitialField() {
+  const target = nameInputRef.value ?? modalRef.value
+  target?.focus({ preventScroll: true })
+}
+
+function getFocusableElements() {
+  const root = modalRef.value
+  if (!root) {
+    return []
+  }
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      [
+        'button:not([disabled])',
+        'input:not([disabled])',
+        'textarea:not([disabled])',
+        'select:not([disabled])',
+        '[tabindex]:not([tabindex="-1"])',
+      ].join(', '),
+    ),
+  ).filter((element) => element.offsetParent !== null || element === document.activeElement)
+}
 
 watch(
   () => [props.open, props.annotation] as const,
@@ -46,6 +82,24 @@ watch(
   },
   { immediate: true },
 )
+
+watch(
+  () => props.open,
+  async (open) => {
+    if (!open) {
+      return
+    }
+    previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    await nextTick()
+    focusInitialField()
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  previouslyFocusedElement?.focus?.({ preventScroll: true })
+  previouslyFocusedElement = null
+})
 
 function addTag() {
   const v = tagInput.value.trim().replace(/,$/, '').trim()
@@ -64,29 +118,77 @@ function removeTag(tag: string) {
 }
 
 function handleSave() {
+  if (!canSave.value) {
+    focusInitialField()
+    return
+  }
   emit('save', {
-    name: form.name,
+    name: form.name.trim(),
     description: form.description,
     annotationType: form.annotationType,
     tags: tags.value,
   })
 }
+
+function handleDialogKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('close')
+    return
+  }
+  if (event.key !== 'Tab') {
+    return
+  }
+
+  const focusables = getFocusableElements()
+  if (!focusables.length) {
+    event.preventDefault()
+    modalRef.value?.focus({ preventScroll: true })
+    return
+  }
+
+  const first = focusables[0]
+  const last = focusables[focusables.length - 1]
+  const active = document.activeElement as HTMLElement | null
+
+  if (event.shiftKey) {
+    if (active === first || active === modalRef.value) {
+      event.preventDefault()
+      last.focus({ preventScroll: true })
+    }
+    return
+  }
+
+  if (active === last) {
+    event.preventDefault()
+    first.focus({ preventScroll: true })
+  }
+}
 </script>
 
 <template>
-  <div v-if="open" class="am-shell" role="dialog" aria-modal="true">
-    <button class="am-shell__backdrop" type="button" @click="emit('close')" />
-    <section class="am-modal">
+  <div v-if="open" class="am-shell" role="presentation">
+    <div class="am-shell__backdrop" aria-hidden="true" @click="emit('close')" />
+    <section
+      ref="modalRef"
+      class="am-modal"
+      role="dialog"
+      aria-modal="true"
+      :aria-labelledby="titleId"
+      :aria-describedby="contextId"
+      tabindex="-1"
+      @keydown="handleDialogKeydown"
+    >
       <header class="am-header">
         <Tag :size="18" color="#6366f1" />
-        <h2 class="am-header__title">{{ mode === 'edit' ? 'Edit annotation' : 'Create annotation' }}</h2>
+        <h2 :id="titleId" class="am-header__title">{{ mode === 'edit' ? 'Edit annotation' : 'Create annotation' }}</h2>
         <button class="am-header__close" type="button" @click="emit('close')">
           <X :size="16" />
         </button>
       </header>
 
       <div class="am-body">
-        <div class="am-context">
+        <div :id="contextId" class="am-context">
           <GitCommitHorizontal :size="14" color="#94a0b8" />
           <div class="am-context__body">
             <span class="am-context__title">{{ day }}</span>
@@ -94,8 +196,8 @@ function handleSave() {
           </div>
         </div>
 
-        <div class="am-field">
-          <span class="am-field__label">Annotation type</span>
+        <fieldset :id="typeGroupId" class="am-field am-field--group">
+          <legend class="am-field__label">Annotation type</legend>
           <div class="am-types">
             <button
               v-for="option in typeOptions"
@@ -109,16 +211,28 @@ function handleSave() {
               <span>{{ option.label }}</span>
             </button>
           </div>
-        </div>
+        </fieldset>
 
-        <label class="am-field">
+        <label class="am-field" :for="nameInputId">
           <span class="am-field__label">Name</span>
-          <input v-model="form.name" class="am-input" placeholder="Spike note" />
+          <input
+            :id="nameInputId"
+            ref="nameInputRef"
+            v-model="form.name"
+            class="am-input"
+            placeholder="Spike note"
+            required
+          />
         </label>
 
-        <label class="am-field">
+        <label class="am-field" :for="descriptionInputId">
           <span class="am-field__label">Description</span>
-          <textarea v-model="form.description" class="am-textarea" placeholder="What changed and why it matters." />
+          <textarea
+            :id="descriptionInputId"
+            v-model="form.description"
+            class="am-textarea"
+            placeholder="What changed and why it matters."
+          />
         </label>
 
         <div class="am-field">
@@ -146,7 +260,7 @@ function handleSave() {
       <footer class="am-footer">
         <button v-if="mode === 'edit'" class="am-btn am-btn--delete" type="button" @click="emit('delete')">Delete</button>
         <button class="am-btn am-btn--cancel" type="button" @click="emit('close')">Cancel</button>
-        <button class="am-btn am-btn--save" type="button" @click="handleSave">Save annotation</button>
+        <button class="am-btn am-btn--save" type="button" :disabled="!canSave" @click="handleSave">Save annotation</button>
       </footer>
     </section>
   </div>
@@ -181,6 +295,7 @@ function handleSave() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  outline: none;
 }
 .am-header {
   display: flex;
@@ -247,6 +362,15 @@ function handleSave() {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.am-field--group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+.am-field--group > legend {
+  padding: 0;
 }
 .am-field__label {
   font-size: 12px;
@@ -387,5 +511,9 @@ function handleSave() {
   background: #6366f1;
   color: #ffffff;
   font-weight: 600;
+}
+.am-btn--save:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 </style>

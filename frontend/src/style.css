@@ -7,8 +7,11 @@
   --cf-sidebar-expanded: 280px;
   --cf-sidebar-collapsed: 52px;
   --cf-sidebar-width: var(--cf-sidebar-expanded);
+  --cf-content-left: var(--cf-sidebar-width);
   --cf-shell-speed: 220ms;
   --cf-shell-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --cf-toolbar-height: 38px;
+  --cf-surface-radius: 14px;
   --cf-bg: #EEF3FB;
   --cf-surface: #ffffff;
   --cf-surface-hover: rgba(255, 255, 255, 0.98);
@@ -28,6 +31,9 @@
   --cf-chrome-height: 0px;
   --cf-shell-traffic-x: 16px;
   --cf-shell-traffic-width: 72px;
+  --cf-controls-safe-left:
+    calc(12px + var(--cf-shell-traffic-x, 16px) + var(--cf-shell-traffic-width, 72px) + 1rem + 84px + 21px + 18px);
+  --cf-toolbar-left: max(var(--cf-controls-safe-left), var(--cf-content-left));
 
   font-family:
     ui-sans-serif,
@@ -106,61 +112,64 @@ textarea {
 }
 
 .app-shell {
-  display: flex;
-  flex-direction: row;
+  position: relative;
   height: 100svh;
   overflow: hidden;
   background: var(--cf-bg);
 }
 
-/* ── Sidebar ── */
-.sidebar {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: var(--cf-sidebar-width);
-  min-width: var(--cf-sidebar-width);
-  height: 100%;
-  background: rgba(233, 239, 247, 0.5);
-  transition:
-    width var(--cf-shell-speed) var(--cf-shell-ease),
-    min-width var(--cf-shell-speed) var(--cf-shell-ease);
-  overflow: hidden;
-  flex-shrink: 0;
-  border-right: 1px solid color-mix(in srgb, var(--cf-sidebar-edge) 60%, transparent);
+.app-shell--collapsed {
+  --cf-content-left: 0px;
 }
 
-/* Collapsed: sidebar disappears entirely, content fills window */
-.app-shell--collapsed .sidebar {
-  width: var(--cf-sidebar-collapsed);
-  min-width: var(--cf-sidebar-collapsed);
-}
-
-.app-shell--collapsed .sidebar-toolbar,
-.app-shell--collapsed .sidebar-content,
-.app-shell--collapsed .sidebar-resize-handle {
-  display: none;
-}
-
-.app-shell--collapsed .content-pane {
-  margin: 0;
-  border-radius: 14px;
-}
-
-/* Toolbar row: traffic lights area + collapse + back + forward */
-.sidebar-toolbar {
+.app-shell__floating-controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
   display: flex;
   align-items: center;
   height: 42px;
-  flex-shrink: 0;
-  padding: 0 12px 0 12px;
+  padding: 0 12px;
   gap: 7px;
   app-region: drag;
   -webkit-app-region: drag;
   user-select: none;
 }
 
-/* Reserve macOS traffic light area (x:14 + 48px lights + 16px spacer ≈ 88px) */
+.sidebar-background {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--cf-sidebar-width);
+  background: var(--cf-sidebar);
+  transition: width var(--cf-shell-speed) var(--cf-shell-ease);
+  z-index: 1;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  flex-direction: column;
+  width: var(--cf-sidebar-width);
+  height: 100svh;
+  background: transparent;
+  transition:
+    width var(--cf-shell-speed) var(--cf-shell-ease),
+    opacity 120ms ease;
+  overflow: visible;
+  z-index: 2;
+}
+
+.app-shell--collapsed .sidebar {
+  pointer-events: none;
+}
+
+.app-shell--collapsed .sidebar-resize-handle {
+  opacity: 0;
+}
+
 .sidebar-tl-gap {
   width: calc(var(--cf-shell-traffic-x, 16px) + var(--cf-shell-traffic-width, 72px) + 1rem);
   flex-shrink: 0;
@@ -194,7 +203,7 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 0 8px 8px;
+  padding: 42px 8px 8px;
   overflow-y: auto;
   overflow-x: hidden;
   app-region: no-drag;
@@ -212,6 +221,8 @@ textarea {
 .sidebar-item {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  width: 100%;
   gap: 10px;
   height: 28px;
   padding: 0 10px;
@@ -223,6 +234,7 @@ textarea {
   font-size: 0.78125rem;
   font-weight: 500;
   text-decoration: none;
+  text-align: left;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -230,13 +242,13 @@ textarea {
 }
 
 .sidebar-item:hover {
-  background: color-mix(in srgb, var(--cf-surface-hover) 55%, transparent);
+  background: color-mix(in srgb, var(--cf-sidebar-edge) 78%, rgba(162, 176, 205, 0.34));
   color: var(--cf-text);
 }
 
 .sidebar-item--active,
 .sidebar-item.router-link-active {
-  background: rgba(255, 255, 255, 0.6);
+  background: color-mix(in srgb, var(--cf-sidebar-edge) 88%, rgba(156, 171, 201, 0.42));
   color: #4f5d78;
   font-weight: 600;
 }
@@ -266,21 +278,37 @@ textarea {
 .sidebar-section-row {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   height: 26px;
   padding: 0 8px;
   gap: 4px;
   margin-top: 6px;
 }
 
+.sidebar-section-row--settings-menu {
+  padding: 0 10px;
+  height: 28px;
+}
+
 .sidebar-section-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
   flex: 1;
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--cf-text-tertiary);
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
+}
+
+.sidebar-section-label--settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .sidebar-section-btn {
@@ -313,8 +341,11 @@ textarea {
 /* Bottom area: settings */
 .sidebar-bottom {
   flex-shrink: 0;
-  padding: 4px 8px;
-  border-top: 1px solid color-mix(in srgb, var(--cf-sidebar-edge) 60%, transparent);
+  padding: 0 8px 8px;
+}
+
+.sidebar-bottom .sidebar-menu {
+  padding-top: 0;
 }
 
 .sidebar-resize-handle {
@@ -325,47 +356,59 @@ textarea {
   height: 100%;
   cursor: col-resize;
   z-index: 10;
+  background: transparent;
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
 
 /* ── Content pane ── */
 .content-pane {
-  flex: 1 1 auto;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--cf-content-left);
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 0;
-  border-radius: 14px;
-  background: #ffffff;
+  min-height: 100svh;
+  padding-top: var(--cf-toolbar-height);
+  border-top-left-radius: var(--cf-surface-radius);
+  border-bottom-left-radius: var(--cf-surface-radius);
+  background: var(--cf-surface);
+  box-shadow: var(--cf-shadow);
   overflow: hidden;
+  transition: left var(--cf-shell-speed) var(--cf-shell-ease);
+  z-index: 3;
 }
 
 [data-platform="darwin"] .content-pane {
-  border-radius: 14px;
+  border-top-left-radius: var(--cf-surface-radius);
+  border-bottom-left-radius: var(--cf-surface-radius);
 }
 
 [data-platform="darwin"] .app-shell {
   background: var(--cf-bg);
 }
 
-[data-platform="darwin"] .sidebar {
-  background: var(--cf-sidebar);
-}
-
 .content-chrome {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--cf-toolbar-left);
   display: flex;
   align-items: center;
-  height: 38px;
-  flex-shrink: 0;
-  padding: 0 10px;
+  height: var(--cf-toolbar-height);
+  padding: 0 10px 0 0;
   gap: 8px;
   app-region: drag;
   -webkit-app-region: drag;
   user-select: none;
-  border-bottom: 1px solid var(--cf-border);
-  position: relative;
-  background: #ffffff;
+  border-top-left-radius: var(--cf-surface-radius);
+  background: color-mix(in srgb, var(--cf-surface) 96%, transparent);
+  backdrop-filter: blur(18px);
+  transition: left var(--cf-shell-speed) var(--cf-shell-ease);
+  z-index: 4;
 }
 
 .content-chrome__title {
@@ -393,18 +436,60 @@ textarea {
 }
 
 .content-chrome__explorer-toolbar {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
   flex: 0 0 auto;
+  overflow: visible;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.content-chrome__explorer-toolbar-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  visibility: hidden;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .content-chrome__toolbar-group {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.content-chrome__toolbar-item {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.content-chrome__toolbar-item--secondary {
+  gap: 8px;
+}
+
+.content-chrome__toolbar-group--secondary {
+  padding-left: 2px;
+}
+
+.content-chrome__toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  flex: 0 0 auto;
 }
 
 .content-chrome__pill,
@@ -422,6 +507,8 @@ textarea {
   padding: 2px 7px;
   line-height: 1.1;
   white-space: nowrap;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
 }
 
 .content-chrome__ghost {
@@ -434,10 +521,61 @@ textarea {
   color: #5b5ce2;
 }
 
+.content-chrome__ghost--overflow {
+  padding-inline: 6px;
+}
+
+.content-chrome__filter-chip {
+  display: inline-flex;
+  align-items: center;
+}
+
+.content-chrome__filter-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
+}
+
+.content-chrome__pill--filter {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding-right: 4px;
+}
+
+.content-chrome__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #64748b;
+  cursor: pointer;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.content-chrome__chip-remove--inline {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-left: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 0;
+  background: transparent;
+}
+
 .content-chrome__explorer-menu {
-  position: fixed;
+  position: absolute;
   min-width: 180px;
-  z-index: 25;
+  max-height: min(28rem, calc(100vh - 92px));
+  overflow: auto;
+  z-index: 20;
   display: grid;
   gap: 4px;
   padding: 8px;
@@ -445,6 +583,24 @@ textarea {
   border-radius: 12px;
   background: #ffffff;
   box-shadow: 0 12px 30px rgba(18, 38, 76, 0.08);
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.content-chrome__explorer-menu--time {
+  min-width: 248px;
+}
+
+.content-chrome__explorer-menu--filters {
+  min-width: 240px;
+}
+
+.content-chrome__explorer-menu--add-filter {
+  min-width: 180px;
+}
+
+.content-chrome__explorer-menu--overflow {
+  min-width: 220px;
 }
 
 .content-chrome__explorer-menu button {
@@ -456,6 +612,66 @@ textarea {
   color: #111827;
   font-size: 12px;
   font-weight: 600;
+  cursor: pointer;
+}
+
+.content-chrome__menu-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.18);
+  margin: 2px 0;
+}
+
+.content-chrome__menu-section {
+  display: grid;
+  gap: 8px;
+  padding: 4px 2px 2px;
+}
+
+.content-chrome__menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 4px;
+}
+
+.content-chrome__menu-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.content-chrome__menu-field {
+  display: grid;
+  gap: 4px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.content-chrome__menu-field input {
+  min-height: 30px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 6px 8px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.content-chrome__menu-field input:focus {
+  outline: 1px solid rgba(99, 102, 241, 0.28);
+  border-color: rgba(99, 102, 241, 0.32);
+}
+
+.content-chrome__menu-apply {
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.1) !important;
+  color: #4f46e5 !important;
 }
 
 .content-chrome__explorer-menu button:disabled {
@@ -465,7 +681,40 @@ textarea {
 .content-chrome__menu-option {
   display: inline-flex;
   align-items: center;
+  width: 100%;
   gap: 8px;
+}
+
+.content-chrome__menu-option-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.content-chrome__menu-option--accordion {
+  justify-content: space-between;
+}
+
+.content-chrome__menu-accordion {
+  display: grid;
+  gap: 6px;
+}
+
+.content-chrome__menu-accordion-body {
+  display: grid;
+  gap: 6px;
+  padding: 0 0 2px 10px;
+}
+
+.content-chrome__menu-caret {
+  flex: 0 0 auto;
+  color: #64748b;
+  transition: transform 160ms ease;
+}
+
+.content-chrome__menu-caret.is-open {
+  transform: rotate(180deg);
 }
 
 .content-chrome__menu-check-placeholder {
@@ -485,32 +734,21 @@ textarea {
   font-weight: 700;
 }
 
-/* TL gap and expand button shown in content chrome when sidebar is collapsed */
-.content-chrome__tl-gap {
-  width: calc(var(--cf-shell-traffic-x, 16px) + var(--cf-shell-traffic-width, 72px) + 1rem);
-  flex-shrink: 0;
-}
-
-.content-chrome__btn {
+.content-chrome__filter-grid {
   display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--cf-text-tertiary);
-  cursor: pointer;
-  flex-shrink: 0;
-  app-region: no-drag;
-  -webkit-app-region: no-drag;
-  transition: color 120ms ease, background 120ms ease;
+  gap: 10px;
 }
 
-.content-chrome__btn:hover {
-  color: var(--cf-text);
-  background: color-mix(in srgb, var(--cf-border) 60%, transparent);
+.content-chrome__filter-group {
+  display: grid;
+  gap: 4px;
+}
+
+.content-chrome__filter-group-title {
+  padding: 4px 2px 2px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .content-body {

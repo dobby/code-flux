@@ -352,6 +352,12 @@ export interface EditorLaunchRequest {
   filePaths?: string[]
 }
 
+export interface FileOpenRequest {
+  repoId: string
+  commitSha: string
+  filePath: string
+}
+
 export interface EditorLaunchResponse {
   available: boolean
   reason: string | null
@@ -360,4 +366,15 @@ export interface EditorLaunchResponse {
   repoPath: string | null
   editorCommand: string | null
   filePaths: string[]
+}
+
+export interface FileOpenResponse {
+  available: boolean
+  opened: boolean
+  reason: string | null
+  repoId: string
+  commitSha: string
+  filePath: string
+  repoPath: string | null
+  resolvedPath: string | null
 }

@@ -3,7 +3,32 @@
     "allow": [
       "Read(//Users/eli/bin/**)",
       "Read(//Users/eli/**)",
-      "Bash(find / -name telegram -type f)"
+      "Bash(find / -name telegram -type f)",
+      "mcp__Claude_Preview__preview_start",
+      "Read(//Applications/Google Chrome.app/Contents/MacOS/**)",
+      "Read(//Applications/**)",
+      "Read(//Applications/Microsoft Edge.app/Contents/MacOS/**)",
+      "Bash(mkdir -p /tmp/cf-screenshots)",
+      "Bash(\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=/tmp/cf-screenshots/explorer.png \"http://localhost:4173/explorer\")",
+      "Bash(\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --hide-scrollbars --window-size=1440,900 --virtual-time-budget=5000 --screenshot=/tmp/cf-screenshots/explorer-modal.png \"http://localhost:4173/explorer?modal=open\")",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(nvm use:*)",
+      "Bash(node /tmp/cf-screenshots/screenshot.mjs)",
+      "Bash(curl -s http://localhost:8086/api/sync/status)",
+      "Bash(curl -s http://localhost:8086/api/v2/dashboard/bootstrap)",
+      "Bash(du -sh /tmp/code-flux/mirrors/*)",
+      "Bash(curl -sX POST -H \"Content-Type: application/json\" -d '{\"\"mode\"\":\"\"incremental\"\"}' http://localhost:8086/api/sync/run)",
+      "Bash(sqlite3 /tmp/code-flux/app.db \"SELECT COUNT\\(*\\) AS commits, COUNT\\(DISTINCT repo_id\\) AS repos, MIN\\(authored_at\\), MAX\\(authored_at\\) FROM commit_fact;\")",
+      "Bash(sqlite3 /tmp/code-flux/app.db \"SELECT repo_id, COUNT\\(*\\) FROM commit_fact GROUP BY repo_id ORDER BY 2 DESC LIMIT 5;\")",
+      "Bash(curl -s -X POST -H \"Content-Type: application/json\" http://localhost:8086/api/dashboard/bootstrap)",
+      "Bash(curl -s http://localhost:8086/api/bootstrap)",
+      "Bash(__NEW_LINE_10f6533ac22cc6ab__ echo:*)",
+      "Bash(__NEW_LINE_10f6533ac22cc6ab__ sqlite3:*)",
+      "Bash(__NEW_LINE_10f6533ac22cc6ab__ curl:*)",
+      "Bash(__NEW_LINE_10f6533ac22cc6ab__ source:*)",
+      "Bash(__NEW_LINE_01908b01436cf230__ echo:*)",
+      "Bash(__NEW_LINE_01908b01436cf230__ grep:*)",
+      "Bash(head -20 })"
     ]
   }
 }

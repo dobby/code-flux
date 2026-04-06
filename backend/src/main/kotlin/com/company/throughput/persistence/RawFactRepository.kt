@@ -26,6 +26,12 @@ data class CommitFactInput(
 class RawFactRepository(
     private val jdbcClient: JdbcClient,
 ) {
+    fun clearThroughputFacts() {
+        jdbcClient.sql("DELETE FROM daily_fact").update()
+        jdbcClient.sql("DELETE FROM commit_file_fact").update()
+        jdbcClient.sql("DELETE FROM commit_fact").update()
+    }
+
     fun commitExists(repoId: String, commitSha: String): Boolean =
         jdbcClient.sql(
             """

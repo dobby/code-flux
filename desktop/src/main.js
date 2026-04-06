@@ -118,6 +118,32 @@ function installSecureIpc() {
     child.unref()
     return response
   })
+
+  ipcMain.handle('shell-open-commit-file', async (_event, request) => {
+    if (!currentTargetUrl) {
+      throw new Error('Local API is not available yet')
+    }
+
+    const response = await requestLocalApi('/api/v2/explorer/open-file', request)
+    if (!response.available || !response.resolvedPath) {
+      return response
+    }
+
+    const errorMessage = await shell.openPath(response.resolvedPath)
+    if (errorMessage) {
+      return {
+        ...response,
+        available: false,
+        opened: false,
+        reason: errorMessage,
+      }
+    }
+
+    return {
+      ...response,
+      opened: true,
+    }
+  })
 }
 
 function createWindow(targetUrl) {
@@ -179,6 +205,15 @@ function createWindow(targetUrl) {
     void shell.openExternal(url)
   })
 
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (!isReloadShortcut(input)) {
+      return
+    }
+
+    event.preventDefault()
+    void reloadWindowContents()
+  })
+
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
     if (CAPTURE_PATH) {
@@ -195,6 +230,42 @@ function createWindow(targetUrl) {
   })
 
   void mainWindow.loadURL(targetUrl)
+}
+
+function isReloadShortcut(input) {
+  const key = typeof input.key === 'string' ? input.key.toLowerCase() : ''
+  const usesPrimaryModifier = process.platform === 'darwin' ? input.meta : input.control
+  return (
+    (usesPrimaryModifier && key === 'r' && !input.shift && !input.alt) ||
+    key === 'f5'
+  )
+}
+
+async function reloadWindowContents() {
+  if (!mainWindow) {
+    return
+  }
+
+  const nextUrl = resolveReloadUrl(mainWindow.webContents.getURL())
+  await mainWindow.loadURL(nextUrl)
+}
+
+function resolveReloadUrl(currentUrl) {
+  if (!currentTargetUrl) {
+    return currentUrl
+  }
+
+  if (!currentUrl) {
+    return currentTargetUrl
+  }
+
+  try {
+    const current = new URL(currentUrl)
+    const target = new URL(currentTargetUrl)
+    return current.origin === target.origin ? current.toString() : currentTargetUrl
+  } catch {
+    return currentTargetUrl
+  }
 }
 
 async function captureWindow(windowRef) {

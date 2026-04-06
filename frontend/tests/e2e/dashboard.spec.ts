@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Dialog, type Page } from '@playwright/test'
 
 test.describe('v2 workspace', () => {
   test('page management from the sidebar works', async ({ page }) => {
@@ -11,23 +11,20 @@ test.describe('v2 workspace', () => {
     const pageId = await createPageFromSidebar(page, pageTitle)
 
     const renamedTitle = `${pageTitle} renamed`
-    page.once('dialog', (dialog) => dialog.accept(renamedTitle))
-    await page.getByTestId(`page-rename-${pageId}`).click()
+    queueDialogs(page, ['rename', renamedTitle])
+    await page.getByTestId(`page-menu-${pageId}`).click()
     await expect(page.getByTestId(`sidebar-page-link-${pageId}`)).toContainText(renamedTitle)
 
-    const orderBeforeMove = await sidebarTitles(page)
-    await page.getByTestId(`page-move-up-${pageId}`).click()
-    await expect.poll(() => sidebarTitles(page)).not.toEqual(orderBeforeMove)
-
     const countBeforeDuplicate = await page.locator('[data-testid^="sidebar-page-link-"]').count()
-    await page.getByTestId(`page-duplicate-${pageId}`).click()
+    queueDialogs(page, ['duplicate'])
+    await page.getByTestId(`page-menu-${pageId}`).click()
     await expect(page.locator('[data-testid^="sidebar-page-link-"]')).toHaveCount(countBeforeDuplicate + 1)
     const duplicatedLink = page.locator('[data-testid^="sidebar-page-link-"]').filter({ hasText: `${renamedTitle} Copy` }).first()
     await expect(duplicatedLink).toBeVisible()
     const duplicatedPageId = (await duplicatedLink.getAttribute('data-testid'))!.replace('sidebar-page-link-', '')
 
-    page.once('dialog', (dialog) => dialog.accept())
-    await page.getByTestId(`page-archive-${duplicatedPageId}`).click()
+    queueDialogs(page, ['archive', true])
+    await page.getByTestId(`page-menu-${duplicatedPageId}`).click()
     await expect(page.getByTestId(`sidebar-page-link-${duplicatedPageId}`)).toHaveCount(0)
   })
 
@@ -192,6 +189,55 @@ test.describe('v2 workspace', () => {
     }
   })
 
+  test('sidebar collapse covers the sidebar while keeping controls fixed', async ({ page }) => {
+    await page.goto('/')
+
+    const sidebar = page.getByTestId('app-sidebar')
+    const surface = page.getByTestId('app-content-surface')
+    const header = page.getByTestId('app-header')
+    const controls = page.getByTestId('app-floating-controls')
+
+    await expect(sidebar).toBeVisible()
+    await expect(surface).toBeVisible()
+    await expect(header).toBeVisible()
+
+    const expandedSidebarBox = await sidebar.boundingBox()
+    const expandedSurfaceBox = await surface.boundingBox()
+    const expandedHeaderBox = await header.boundingBox()
+    const controlsBeforeBox = await controls.boundingBox()
+
+    expect(expandedSidebarBox).not.toBeNull()
+    expect(expandedSurfaceBox).not.toBeNull()
+    expect(expandedHeaderBox).not.toBeNull()
+    expect(controlsBeforeBox).not.toBeNull()
+
+    expect(expandedSurfaceBox!.x).toBeCloseTo(expandedSidebarBox!.width, 0)
+    expect(expandedHeaderBox!.x).toBeGreaterThanOrEqual((await floatingControlsBoundary(page)) - 1)
+
+    await page.getByTestId('sidebar-toggle').click()
+    await page.waitForTimeout(350)
+
+    await expect(sidebar).toBeVisible()
+    await expect(surface).toBeVisible()
+    await expect(header).toBeVisible()
+
+    const collapsedSurfaceBox = await surface.boundingBox()
+    const collapsedHeaderBox = await header.boundingBox()
+    const controlsAfterBox = await controls.boundingBox()
+
+    expect(collapsedSurfaceBox).not.toBeNull()
+    expect(collapsedHeaderBox).not.toBeNull()
+    expect(controlsAfterBox).not.toBeNull()
+
+    expect(controlsAfterBox!.x).toBeCloseTo(controlsBeforeBox!.x, 1)
+    expect(controlsAfterBox!.y).toBeCloseTo(controlsBeforeBox!.y, 1)
+    expect(collapsedSurfaceBox!.x).toBeLessThan(expandedSurfaceBox!.x)
+    expect(collapsedSurfaceBox!.x).toBeLessThanOrEqual(1)
+    expect(collapsedHeaderBox!.x).toBeLessThan(expandedHeaderBox!.x)
+    expect(collapsedHeaderBox!.x).toBeGreaterThanOrEqual((await floatingControlsBoundary(page)) - 1)
+    expect(await contentSurfaceCoversSidebar(page)).toBe(true)
+  })
+
   test('legacy overview route remains available', async ({ page }) => {
     await page.goto('/legacy/overview')
     await expect(page.getByTestId('app-sidebar')).toBeVisible()
@@ -204,7 +250,7 @@ async function createPageFromSidebar(page: Page, title: string): Promise<string>
   page.once('dialog', (dialog) => dialog.accept(title))
   await page.getByTestId('sidebar-create-page').click()
   await expect(page).toHaveURL(/\/pages\/page-/)
-  await expect(page.locator('.workspace-topbar h1')).toHaveText(title)
+  await expect(page.getByTestId('page-toolbar-title')).toHaveText(title)
   return currentPageId(page)
 }
 
@@ -259,8 +305,46 @@ async function readGridLayout(page: Page, widgetId: string) {
   }))
 }
 
-async function sidebarTitles(page: Page) {
-  return page.locator('[data-testid^="sidebar-page-link-"] strong').allInnerTexts()
+function queueDialogs(page: Page, responses: Array<string | true>) {
+  const pending = [...responses]
+  const handler = async (dialog: Dialog) => {
+    const next = pending.shift()
+    if (next === undefined) {
+      throw new Error('Received unexpected dialog during sidebar page flow')
+    }
+    if (next === true) {
+      await dialog.accept()
+    } else {
+      await dialog.accept(next)
+    }
+    if (pending.length === 0) {
+      page.off('dialog', handler)
+    }
+  }
+  page.on('dialog', handler)
+}
+
+async function floatingControlsBoundary(page: Page) {
+  const forwardButton = page.getByRole('button', { name: 'Go forward' })
+  const box = await forwardButton.boundingBox()
+  if (!box) {
+    throw new Error('Forward button not available for shell geometry assertions')
+  }
+  return box.x + box.width
+}
+
+async function contentSurfaceCoversSidebar(page: Page) {
+  return page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]')
+    if (!(sidebar instanceof HTMLElement)) {
+      return false
+    }
+    const rect = sidebar.getBoundingClientRect()
+    const probeX = rect.left + Math.max(24, rect.width / 2)
+    const probeY = rect.top + 96
+    const element = document.elementFromPoint(probeX, probeY)
+    return Boolean(element?.closest('[data-testid="app-content-surface"]'))
+  })
 }
 
 async function firstWidgetId(page: Page) {

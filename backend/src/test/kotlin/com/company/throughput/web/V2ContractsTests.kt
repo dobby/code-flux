@@ -241,4 +241,24 @@ class V2ContractsTests(
             .andExpect(jsonPath("$.available").value(false))
             .andExpect(jsonPath("$.reason").isString)
     }
+
+    @Test
+    fun `open file validates repository path availability`() {
+        mockMvc.perform(
+            post("/api/v2/explorer/open-file")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "repoId": "marcando-api",
+                      "commitSha": "abc123",
+                      "filePath": "src/main/App.kt"
+                    }
+                    """.trimIndent(),
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.available").value(false))
+            .andExpect(jsonPath("$.reason").isString)
+    }
 }

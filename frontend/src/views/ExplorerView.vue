@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   GitCommitHorizontal,
@@ -13,11 +13,27 @@ import { useExplorerStore } from '../stores/explorer'
 import ExplorerAnnotationModal from '../components/ExplorerAnnotationModal.vue'
 import VChart from 'vue-echarts'
 import type { EChartsOption } from 'echarts'
+import { getSeriesColor } from '../lib/chart'
 
 const route = useRoute()
 const router = useRouter()
 const dashboard = useDashboardStore()
 const explorer = useExplorerStore()
+
+const metricNoun = computed(() => {
+  switch (explorer.metric) {
+    case 'lines_added':
+      return 'lines added'
+    case 'lines_removed':
+      return 'lines removed'
+    case 'net_lines':
+      return 'net lines'
+    case 'file_count':
+      return 'files'
+    default:
+      return 'commits'
+  }
+})
 
 const formattedSelectedDate = computed(() => {
   if (!explorer.selectedDate) return ''
@@ -34,59 +50,232 @@ const selectedDayRepoCount = computed(() => {
   return repos.size
 })
 
-const chartOption = computed<EChartsOption>(() => ({
-  backgroundColor: 'transparent',
-  animation: true,
-  tooltip: {
-    trigger: 'axis',
-    axisPointer: { type: 'shadow' },
-    formatter: (params: unknown) => {
-      const points = Array.isArray(params) ? params : []
-      const first = points[0] as { axisValueLabel?: string; data?: number } | undefined
-      return `${first?.axisValueLabel ?? ''}<br/>${first?.data ?? 0} commits`
-    },
-  },
-  grid: { left: 0, right: 0, top: 8, bottom: 0, containLabel: false },
-  xAxis: {
-    type: 'category',
-    data: explorer.analytics.map((point) => point.day),
-    axisLabel: { show: false },
-    axisLine: { show: false },
-    axisTick: { show: false },
-    splitLine: { show: false },
-  },
-  yAxis: {
-    type: 'value',
-    axisLabel: { show: false },
-    axisLine: { show: false },
-    axisTick: { show: false },
-    splitLine: { show: false },
-  },
-  series: [
-    {
-      type: 'bar',
-      data: explorer.analytics.map((point) => ({
-        name: point.day,
-        value: point.value,
-        itemStyle: {
-          color: point.day === explorer.selectedDate ? '#6366f1' : 'rgba(148, 163, 184, 0.35)',
-          borderRadius: [2, 2, 0, 0],
-        },
-      })),
-      barMaxWidth: 28,
-      barMinWidth: 16,
-      barCategoryGap: '20%',
-      emphasis: { itemStyle: { color: '#6366f1' } },
-    },
-  ],
-}))
+const chartSeries = computed(() => explorer.analytics?.series ?? [])
 
-function onExplorerChartClick(event: unknown) {
-  const chartEvent = event as { name?: string }
-  const day = chartEvent.name
-  if (!day) return
-  explorer.selectDate(day)
+const chartDays = computed(() => {
+  const days = new Set<string>()
+  for (const series of chartSeries.value) {
+    for (const point of series.points) {
+      days.add(point.day)
+    }
+  }
+  return Array.from(days).sort()
+})
+
+const chartLegendVisible = computed(
+  () => explorer.showLegend && explorer.groupBy !== 'none' && chartSeries.value.length > 1,
+)
+
+const chartCanvasStyle = computed(() => {
+  if (explorer.chartStyle !== 'bar') {
+    return { width: '100%' }
+  }
+
+  const pointCount = Math.max(chartDays.value.length, 1)
+  const seriesCount = Math.max(chartSeries.value.length, 1)
+  const dayWidth = explorer.groupBy === 'none'
+    ? 56
+    : Math.max(68, Math.min(160, seriesCount * 18 + 10))
+  const targetWidth = Math.max(360, pointCount * dayWidth + (chartLegendVisible.value ? 84 : 0))
+
+  return {
+    width: `max(100%, ${targetWidth}px)`,
+  }
+})
+
+const chartOption = computed<EChartsOption>(() => {
+  const series = chartSeries.value.map((entry, index) => {
+    const color = explorer.groupBy === 'none'
+      ? '#6366f1'
+      : getSeriesColor(index)
+    const seriesType: 'bar' | 'line' = explorer.chartStyle === 'bar' ? 'bar' : 'line'
+    const pointMap = new Map(entry.points.map((point) => [point.day, point.value]))
+    const values = chartDays.value.map((day) => pointMap.get(day) ?? 0)
+
+    return {
+      id: entry.key,
+      name: entry.label,
+      type: seriesType,
+      smooth: explorer.chartStyle !== 'bar',
+      showSymbol: explorer.chartStyle !== 'bar',
+      symbolSize: explorer.chartStyle === 'bar' ? 0 : 6,
+      emphasis: { focus: 'series' as const },
+      lineStyle: explorer.chartStyle === 'bar' ? undefined : { width: 2.5, color },
+      areaStyle: explorer.chartStyle === 'area' ? { opacity: 0.12, color } : undefined,
+      itemStyle: explorer.chartStyle === 'bar'
+        ? {
+            color: explorer.groupBy === 'none'
+              ? undefined
+              : color,
+            borderRadius: [3, 3, 0, 0],
+          }
+        : { color },
+      data: explorer.chartStyle === 'bar'
+        ? values.map((value, valueIndex) => ({
+            value,
+            itemStyle: explorer.groupBy === 'none'
+              ? {
+                  color: chartDays.value[valueIndex] === explorer.selectedDate
+                    ? '#6366f1'
+                    : 'rgba(148, 163, 184, 0.35)',
+                  borderRadius: [3, 3, 0, 0],
+                }
+              : {
+                  color,
+                  borderRadius: [3, 3, 0, 0],
+                },
+          }))
+        : values,
+      barMaxWidth: explorer.groupBy === 'none' ? 54 : 18,
+      barMinWidth: explorer.groupBy === 'none' ? 30 : 10,
+      barCategoryGap: explorer.groupBy === 'none' ? '2%' : '8%',
+      barGap: explorer.groupBy === 'none' ? '0%' : '12%',
+      markLine: index === 0 && explorer.selectedDate
+        ? {
+            silent: true,
+            symbol: 'none',
+            animation: false,
+            label: { show: false },
+            lineStyle: {
+              color: 'rgba(99, 102, 241, 0.22)',
+              width: 1,
+            },
+            data: [{ xAxis: explorer.selectedDate }],
+          }
+        : undefined,
+    }
+  }) as NonNullable<EChartsOption['series']>
+
+  return {
+    backgroundColor: 'transparent',
+    animation: true,
+    color: chartSeries.value.map((_, index) => getSeriesColor(index)),
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: explorer.chartStyle === 'bar' ? 'shadow' : 'line' },
+      formatter: (params: unknown) => formatChartTooltip(params),
+    },
+    legend: chartLegendVisible.value
+      ? {
+          type: 'scroll',
+          orient: 'vertical',
+          top: 8,
+          right: 0,
+          bottom: 0,
+          itemWidth: 10,
+          itemHeight: 10,
+          textStyle: {
+            color: '#61708d',
+            fontSize: 11,
+          },
+        }
+      : { show: false },
+    grid: {
+      left: 0,
+      right: chartLegendVisible.value ? 76 : 0,
+      top: 8,
+      bottom: 8,
+      containLabel: true,
+    },
+    xAxis: {
+      type: 'category',
+      data: chartDays.value,
+      axisLabel: { show: false },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      minInterval: 1,
+      splitNumber: 4,
+      axisLabel: {
+        show: true,
+        color: '#7b8aa5',
+        fontSize: 11,
+        margin: 10,
+        formatter: (value: number) => `${Math.round(value)}`,
+      },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: 'rgba(148, 163, 184, 0.16)',
+        },
+      },
+    },
+    series,
+  }
+})
+
+function formatChartTooltip(params: unknown) {
+  const points = (Array.isArray(params) ? params : []).filter(Boolean) as Array<{
+    axisValueLabel?: string
+    color?: string
+    seriesName?: string
+    value?: number | string | Array<number | string>
+  }>
+  if (!points.length) {
+    return ''
+  }
+
+  const rows = points
+    .map((point) => ({
+      label: point.seriesName ?? explorer.metricLabel,
+      color: typeof point.color === 'string' ? point.color : '#6366f1',
+      value: extractTooltipValue(point.value),
+    }))
+    .sort((left, right) => right.value - left.value)
+
+  const total = rows.reduce((sum, row) => sum + row.value, 0)
+  const lines = rows
+    .filter((row) => row.value > 0 || rows.length === 1)
+    .map((row) =>
+      `<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${row.color};margin-right:6px;"></span>${row.label}: ${row.value} ${metricNoun.value}`,
+    )
+
+  if (rows.length > 1) {
+    lines.push(`<strong>Total: ${total} ${metricNoun.value}</strong>`)
+  }
+
+  return `${points[0]?.axisValueLabel ?? ''}<br/>${lines.join('<br/>')}`
+}
+
+function extractTooltipValue(value: number | string | Array<number | string> | undefined) {
+  const raw = Array.isArray(value) ? value.at(-1) : value
+  const numeric = Number(raw ?? 0)
+  return Number.isFinite(numeric) ? Math.round(numeric) : 0
+}
+
+function handleExplorerChartClick(event: {
+  name?: string
+  seriesId?: string
+  seriesName?: string
+}) {
+  const day = typeof event.name === 'string' ? event.name : ''
+  if (!day) {
+    return
+  }
+
+  const seriesKey = explorer.groupBy === 'none'
+    ? null
+    : resolveSeriesKey(event)
+
+  explorer.selectChartPoint(day, seriesKey)
   explorer.syncQueryToUrl(router)
+}
+
+function resolveSeriesKey(event: { seriesId?: string; seriesName?: string }) {
+  if (typeof event.seriesId === 'string' && event.seriesId) {
+    return event.seriesId
+  }
+
+  if (typeof event.seriesName === 'string' && event.seriesName) {
+    return chartSeries.value.find((series) => series.label === event.seriesName)?.key ?? null
+  }
+
+  return null
 }
 
 const authorInitial = computed(() => (explorer.selectedCommit?.author ?? '?').slice(0, 1).toUpperCase())
@@ -102,9 +291,15 @@ function formatDetailTimestamp(iso: string): string {
   }
 }
 
-const detailFilesCount = computed(() => explorer.displayCommitFiles.length)
-const visibleFiles = computed(() => explorer.displayCommitFiles.slice(0, 6))
-const extraFileCount = computed(() => Math.max(0, explorer.displayCommitFiles.length - 6))
+const visibleFiles = computed(() => explorer.displayCommitFiles)
+const totalCommitFilesCount = computed(() => explorer.selectedCommitDetail?.files.length ?? 0)
+const detailFilesCount = computed(() => totalCommitFilesCount.value)
+const extraFileCount = computed(() => Math.max(0, totalCommitFilesCount.value - visibleFiles.value.length))
+const supportsNativeFileOpen = computed(
+  () => typeof window !== 'undefined' && typeof window.codeFluxSecure?.openCommitFile === 'function',
+)
+const openingFilePath = ref<string | null>(null)
+const fileOpenError = ref<string | null>(null)
 
 function openSelectedCommit() {
   const c = explorer.selectedCommit
@@ -112,22 +307,79 @@ function openSelectedCommit() {
   void router.push({
     name: 'explorer-commit',
     params: { repoId: c.repoId, commitSha: c.commitSha },
-    query: { date: explorer.selectedDate },
+    query: explorer.buildQuery(),
   })
 }
 
+async function openChangedFile(filePath: string) {
+  const commit = explorer.selectedCommit
+  if (!commit || !window.codeFluxSecure?.openCommitFile) {
+    return
+  }
+
+  openingFilePath.value = filePath
+  fileOpenError.value = null
+
+  try {
+    const response = await window.codeFluxSecure.openCommitFile({
+      repoId: commit.repoId,
+      commitSha: commit.commitSha,
+      filePath,
+    })
+    if (!response.available || !response.opened) {
+      fileOpenError.value = response.reason || `Unable to open ${filePath}.`
+    }
+  } catch (error) {
+    fileOpenError.value = error instanceof Error ? error.message : `Unable to open ${filePath}.`
+  } finally {
+    if (openingFilePath.value === filePath) {
+      openingFilePath.value = null
+    }
+  }
+}
+
 watch(
-  () => [explorer.rangePreset, explorer.selectedRepoIds] as const,
+  () => [
+    explorer.rangePreset,
+    explorer.customDateRange.from,
+    explorer.customDateRange.to,
+    explorer.selectedRepoIds.join(','),
+    explorer.selectedAuthorIds.join(','),
+    explorer.selectedLanguages.join(','),
+    explorer.selectedCategories.join(','),
+    explorer.selectedProductCodes.join(','),
+    explorer.metric,
+    explorer.groupBy,
+  ] as const,
   () => {
-    void explorer.loadAnalytics().then(() => explorer.syncQueryToUrl(router))
+    void explorer.refreshExplorer().then(() => explorer.syncQueryToUrl(router))
   },
 )
 
 watch(
-  () => explorer.selectedDate,
+  () => explorer.chartStyle,
   () => {
-    void Promise.all([explorer.loadDay(), explorer.loadAnnotationsForDay()])
     explorer.syncQueryToUrl(router)
+  },
+)
+
+watch(
+  () => [explorer.selectedDate, explorer.selectedSeriesKey] as const,
+  ([selectedDate], [previousDate]) => {
+    const requests: Array<Promise<unknown>> = [explorer.loadDay()]
+    if (selectedDate !== previousDate) {
+      requests.push(explorer.loadAnnotationsForDay())
+    }
+    void Promise.all(requests).then(() => explorer.syncQueryToUrl(router))
+  },
+)
+
+watch(
+  () => explorer.selectedCommit?.commitSha,
+  () => {
+    fileOpenError.value = null
+    openingFilePath.value = null
+    void explorer.loadSelectedCommitDetail()
   },
 )
 
@@ -153,20 +405,29 @@ onMounted(async () => {
   <section class="explorer-view">
     <section class="explorer-chart">
       <div class="explorer-chart__header">
-        <span class="explorer-chart__title">Commit activity</span>
-        <span v-if="explorer.selectedDate" class="explorer-chart__badge">
-          {{ formattedSelectedDate }} selected · {{ selectedDayCommitCount }} commits across {{ selectedDayRepoCount }} repos
-        </span>
+        <div class="explorer-chart__header-main">
+          <span class="explorer-chart__title">{{ explorer.metricLabel }}</span>
+          <span v-if="explorer.selectedDate" class="explorer-chart__badge">
+            {{ formattedSelectedDate }} selected · {{ selectedDayCommitCount }} commits across {{ selectedDayRepoCount }} repos
+          </span>
+        </div>
       </div>
       <div class="explorer-chart__canvas-wrap">
+        <div v-if="explorer.analyticsError" class="explorer-chart__empty explorer-chart__empty--error">
+          <span>{{ explorer.analyticsError }}</span>
+          <button class="explorer-chart__retry" type="button" @click="explorer.loadAnalytics()">Retry</button>
+        </div>
         <VChart
-          v-if="explorer.analytics.length"
+          v-else-if="chartDays.length"
           class="explorer-chart__canvas"
+          :style="chartCanvasStyle"
           :option="chartOption"
           :autoresize="true"
-          @click="onExplorerChartClick"
+          @click="handleExplorerChartClick"
         />
-        <div v-else class="explorer-chart__empty">No activity yet.</div>
+        <div v-else class="explorer-chart__empty">
+          {{ explorer.loadingAnalytics ? 'Loading activity…' : 'No activity yet.' }}
+        </div>
       </div>
     </section>
 
@@ -175,9 +436,15 @@ onMounted(async () => {
       <aside class="explorer-split__list-pane">
         <header class="explorer-split__pane-header">
           <span class="explorer-split__pane-title">Commits · {{ formattedSelectedDate || 'No date' }}</span>
-          <span class="explorer-split__pane-count">{{ explorer.displayCommits.length }} commits</span>
+          <span class="explorer-split__pane-count">
+            {{ explorer.selectedSeriesLabel ? `${explorer.selectedSeriesLabel} · ` : '' }}{{ explorer.displayCommits.length }} commits
+          </span>
         </header>
-        <div v-if="explorer.loadingDay" class="explorer-split__empty">Loading commits…</div>
+        <div v-if="explorer.dayError" class="explorer-split__empty explorer-split__empty--error">
+          <span>{{ explorer.dayError }}</span>
+          <button class="explorer-split__retry-btn" type="button" @click="explorer.loadDay()">Retry</button>
+        </div>
+        <div v-else-if="explorer.loadingDay" class="explorer-split__empty">Loading commits…</div>
         <div v-else-if="!explorer.displayCommits.length" class="explorer-split__empty">No commits for this day.</div>
         <div v-else class="explorer-split__commit-list">
           <button
@@ -192,7 +459,7 @@ onMounted(async () => {
             <span class="explorer-split__commit-body">
               <span class="explorer-split__commit-subject">{{ commit.subject }}</span>
               <span class="explorer-split__commit-meta">
-                {{ commit.author }} · {{ commit.repoId }} · {{ (commit as any).filesChanged ?? 0 }} files · +{{ commit.linesAdded }} −{{ commit.linesRemoved }}
+                {{ commit.author }} · {{ commit.repoId }} · +{{ commit.linesAdded }} −{{ commit.linesRemoved }}
               </span>
             </span>
             <span v-if="commit.issueKeys && commit.issueKeys.length" class="explorer-split__commit-tag">
@@ -253,7 +520,12 @@ onMounted(async () => {
                 <span>Add</span>
               </button>
             </div>
-            <div v-if="!explorer.dayAnnotations.length" class="explorer-detail__empty">No annotations yet.</div>
+            <div v-if="explorer.annotationsError" class="explorer-detail__empty explorer-detail__empty--error">
+              <span>{{ explorer.annotationsError }}</span>
+              <button class="explorer-detail__retry-btn" type="button" @click="explorer.loadAnnotationsForDay()">Retry</button>
+            </div>
+            <div v-else-if="explorer.loadingAnnotations" class="explorer-detail__empty">Loading annotations…</div>
+            <div v-else-if="!explorer.dayAnnotations.length" class="explorer-detail__empty">No annotations yet.</div>
             <button
               v-for="annotation in explorer.dayAnnotations"
               :key="annotation.id"
@@ -275,19 +547,44 @@ onMounted(async () => {
 
           <div class="explorer-detail__section">
             <span class="explorer-detail__section-title">Changed files</span>
-            <div class="explorer-detail__files">
+            <div v-if="explorer.loadingCommitDetail" class="explorer-detail__empty">Loading changed files…</div>
+            <div v-else-if="explorer.commitDetailError" class="explorer-detail__empty explorer-detail__empty--error">
+              <span>{{ explorer.commitDetailError }}</span>
+              <button class="explorer-detail__retry-btn" type="button" @click="explorer.loadSelectedCommitDetail()">Retry</button>
+            </div>
+            <div v-else-if="!detailFilesCount" class="explorer-detail__empty">
+              No changed files were returned for this commit.
+            </div>
+            <div v-else class="explorer-detail__files">
               <div
                 v-for="file in visibleFiles"
                 :key="file.filePath"
                 class="explorer-detail__file-row"
               >
-                <File :size="13" class="explorer-detail__file-icon" />
-                <span class="explorer-detail__file-path">{{ file.filePath }}</span>
-                <span class="explorer-detail__file-stats">+{{ file.linesAdded }} −{{ file.linesRemoved }}</span>
+                <button
+                  class="explorer-detail__file-row-button"
+                  type="button"
+                  :disabled="!supportsNativeFileOpen || openingFilePath === file.filePath"
+                  :title="supportsNativeFileOpen ? `Open ${file.filePath}` : 'File opening is only available in the desktop app.'"
+                  :aria-label="`Open ${file.filePath}`"
+                  @click="openChangedFile(file.filePath)"
+                >
+                  <File :size="13" class="explorer-detail__file-icon" />
+                  <span class="explorer-detail__file-path">{{ file.filePath }}</span>
+                  <span class="explorer-detail__file-stats">+{{ file.linesAdded }} −{{ file.linesRemoved }}</span>
+                </button>
               </div>
-              <button v-if="extraFileCount > 0" class="explorer-detail__more-files" type="button">
+              <button
+                v-if="extraFileCount > 0"
+                class="explorer-detail__more-files"
+                type="button"
+                @click="explorer.expandCommitFiles()"
+              >
                 + {{ extraFileCount }} more files
               </button>
+              <div v-if="fileOpenError" class="explorer-detail__empty explorer-detail__empty--error">
+                <span>{{ fileOpenError }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -331,8 +628,18 @@ onMounted(async () => {
 .explorer-chart__header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   width: 100%;
+}
+
+.explorer-chart__header-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
 }
 
 .explorer-chart__title {
@@ -353,23 +660,43 @@ onMounted(async () => {
   line-height: 1.3;
 }
 
+
 .explorer-chart__canvas-wrap {
   flex: 1;
   min-height: 0;
   position: relative;
+  display: flex;
+  justify-content: flex-start;
 }
 
 .explorer-chart__canvas {
-  width: 100%;
+  max-width: 100%;
   height: 100%;
 }
 
 .explorer-chart__empty {
   display: grid;
   place-items: center;
+  gap: 8px;
   height: 100%;
   color: #94a0b8;
   font-size: 11px;
+  text-align: center;
+}
+
+.explorer-chart__empty--error {
+  justify-items: center;
+}
+
+.explorer-chart__retry {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 6px;
+  background: transparent;
+  color: #61708d;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  cursor: pointer;
 }
 
 .explorer-split {
@@ -442,6 +769,24 @@ onMounted(async () => {
   padding: 20px;
   color: #94a0b8;
   font-size: 11px;
+}
+
+.explorer-split__empty--error {
+  display: grid;
+  gap: 8px;
+}
+
+.explorer-split__retry-btn,
+.explorer-detail__retry-btn {
+  justify-self: start;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 6px;
+  background: transparent;
+  color: #61708d;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  cursor: pointer;
 }
 
 .explorer-split__commit-list {
@@ -643,6 +988,11 @@ onMounted(async () => {
   color: #94a0b8;
 }
 
+.explorer-detail__empty--error {
+  display: grid;
+  gap: 8px;
+}
+
 .explorer-detail__annotation-card {
   display: flex;
   align-items: center;
@@ -690,11 +1040,33 @@ onMounted(async () => {
 }
 
 .explorer-detail__file-row {
+  width: 100%;
+}
+
+.explorer-detail__file-row-button {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 4px 0;
   width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.explorer-detail__file-row-button:hover:not(:disabled) {
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.explorer-detail__file-row-button:hover:not(:disabled) .explorer-detail__file-path {
+  color: #3f4d69;
+}
+
+.explorer-detail__file-row-button:disabled {
+  cursor: default;
+  opacity: 0.72;
 }
 
 .explorer-detail__file-icon {
@@ -705,12 +1077,16 @@ onMounted(async () => {
 .explorer-detail__file-path {
   flex: 1;
   min-width: 0;
+  display: block;
   font-size: 11px;
   font-weight: 500;
   color: #61708d;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  unicode-bidi: plaintext;
 }
 
 .explorer-detail__file-stats {

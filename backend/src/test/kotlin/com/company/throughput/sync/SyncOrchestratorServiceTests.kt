@@ -195,4 +195,91 @@ class SyncOrchestratorServiceTests {
         assertEquals(1, binaryRows)
         assertTrue(categories.containsAll(listOf("production", "test", "docs", "generated", "production")))
     }
+
+    @Test
+    fun `built in build output exclusions keep dist and artifacts out of source metrics`() {
+        val project = GitFixtureSupport.createProject(tempDir.resolve("build-output-exclusions"))
+        GitFixtureSupport.commitFile(
+            repo = project.workRepo,
+            relativePath = "src/main/App.kt",
+            content = "class App\n".toByteArray(),
+            message = "source",
+            authorName = "Eli",
+            authorEmail = "eli@example.com",
+            authoredAt = "2026-01-01T08:00:00+00:00",
+        )
+        GitFixtureSupport.commitFile(
+            repo = project.workRepo,
+            relativePath = "dist/assets/app.js",
+            content = "console.log('bundle')\n".toByteArray(),
+            message = "bundle",
+            authorName = "Eli",
+            authorEmail = "eli@example.com",
+            authoredAt = "2026-01-02T08:00:00+00:00",
+        )
+        GitFixtureSupport.commitFile(
+            repo = project.workRepo,
+            relativePath = "target/app.jar",
+            content = byteArrayOf(1, 2, 3, 4),
+            message = "artifact",
+            authorName = "Eli",
+            authorEmail = "eli@example.com",
+            authoredAt = "2026-01-03T08:00:00+00:00",
+        )
+        GitFixtureSupport.push(project.workRepo, "main")
+
+        val context = GitFixtureSupport.createAppContext(project, tempDir.resolve("data"))
+        context.syncOrchestratorService.executeIncrementalSync(context.syncStateRepository.startRun())
+
+        val storedPaths = context.jdbcClient.sql(
+            "SELECT file_path FROM commit_file_fact ORDER BY file_path",
+        ).query(String::class.java).list()
+        val aggregateCommits = context.jdbcClient.sql(
+            "SELECT COALESCE(SUM(commit_count), 0) FROM daily_fact",
+        ).query(Int::class.java).single()
+
+        assertEquals(listOf("src/main/App.kt"), storedPaths)
+        assertEquals(1, aggregateCommits)
+    }
+
+    @Test
+    fun `repo exclude path globs remove matching files from sync aggregates`() {
+        val project = GitFixtureSupport.createProject(tempDir.resolve("repo-path-exclusions"))
+        GitFixtureSupport.commitFile(
+            repo = project.workRepo,
+            relativePath = "src/main/App.kt",
+            content = "class App\n".toByteArray(),
+            message = "source",
+            authorName = "Eli",
+            authorEmail = "eli@example.com",
+            authoredAt = "2026-01-01T08:00:00+00:00",
+        )
+        GitFixtureSupport.commitFile(
+            repo = project.workRepo,
+            relativePath = "vendor/sdk/generated.ts",
+            content = "export const sdk = true\n".toByteArray(),
+            message = "vendor output",
+            authorName = "Eli",
+            authorEmail = "eli@example.com",
+            authoredAt = "2026-01-02T08:00:00+00:00",
+        )
+        GitFixtureSupport.push(project.workRepo, "main")
+
+        val context = GitFixtureSupport.createAppContext(
+            project = project,
+            dataDir = tempDir.resolve("data"),
+            excludePathGlobs = listOf("vendor/**"),
+        )
+        context.syncOrchestratorService.executeIncrementalSync(context.syncStateRepository.startRun())
+
+        val storedPaths = context.jdbcClient.sql(
+            "SELECT file_path FROM commit_file_fact ORDER BY file_path",
+        ).query(String::class.java).list()
+        val aggregateCommits = context.jdbcClient.sql(
+            "SELECT COALESCE(SUM(commit_count), 0) FROM daily_fact",
+        ).query(Int::class.java).single()
+
+        assertEquals(listOf("src/main/App.kt"), storedPaths)
+        assertEquals(1, aggregateCommits)
+    }
 }

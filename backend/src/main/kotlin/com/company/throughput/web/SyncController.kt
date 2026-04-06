@@ -29,6 +29,12 @@ data class SyncStopResponse(
     val status: String,
 )
 
+data class SyncResetResponse(
+    val accepted: Boolean,
+    val running: Boolean,
+    val status: String,
+)
+
 @Validated
 @RestController
 @RequestMapping("/api/sync")
@@ -57,6 +63,16 @@ class SyncController(
             accepted = accepted,
             running = syncStatusService.currentStatus().running,
             status = if (accepted) "STOP_REQUESTED" else "IDLE",
+        )
+    }
+
+    @PostMapping("/reset")
+    fun reset(): SyncResetResponse {
+        val accepted = syncOrchestratorService.resetSyncData()
+        return SyncResetResponse(
+            accepted = accepted,
+            running = syncStatusService.currentStatus().running,
+            status = if (accepted) "RESET" else "RUNNING",
         )
     }
 }

@@ -60,6 +60,7 @@ class ApiContractTests(
         jdbcClient.sql("DELETE FROM commit_file_fact").update()
         jdbcClient.sql("DELETE FROM commit_fact").update()
         jdbcClient.sql("UPDATE repo_sync_state SET last_successful_sync_run_id = NULL, last_successful_synced_at = NULL, last_seen_commit_sha = NULL, last_error_message = NULL").update()
+        jdbcClient.sql("DELETE FROM sync_run_events").update()
         jdbcClient.sql("DELETE FROM sync_run").update()
 
         jdbcClient.sql(
@@ -323,6 +324,79 @@ class ApiContractTests(
     }
 
     @Test
+    fun `sync reset endpoint clears ingested throughput data and sync history`() {
+        jdbcClient.sql(
+            """
+            INSERT INTO sync_run (sync_run_id, started_at, finished_at, status, message)
+            VALUES (99, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'SUCCESS', 'Seeded run')
+            """.trimIndent(),
+        ).update()
+        jdbcClient.sql(
+            """
+            UPDATE repo_sync_state
+            SET last_successful_sync_run_id = 99,
+                last_successful_synced_at = CURRENT_TIMESTAMP,
+                last_seen_commit_sha = 'abc123',
+                last_error_message = 'Old failure'
+            WHERE repo_id = 'marcando-api'
+            """.trimIndent(),
+        ).update()
+        jdbcClient.sql(
+            """
+            INSERT INTO sync_run_events (
+              event_key, sync_run_id, sort_order, source_kind, repo_id, label, detail,
+              status, started_at, finished_at, progress_percent, created_at, updated_at
+            ) VALUES (
+              'repo:marcando-api', 99, 0, 'git', 'marcando-api', 'marcando-api', 'Seeded',
+              'COMPLETED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 100, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )
+            """.trimIndent(),
+        ).update()
+
+        mockMvc.perform(post("/api/sync/reset"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.accepted").value(true))
+            .andExpect(jsonPath("$.status").value("RESET"))
+
+        org.junit.jupiter.api.Assertions.assertEquals(
+            0,
+            jdbcClient.sql("SELECT COUNT(*) FROM daily_fact").query(Int::class.java).single(),
+        )
+        org.junit.jupiter.api.Assertions.assertEquals(
+            0,
+            jdbcClient.sql("SELECT COUNT(*) FROM commit_file_fact").query(Int::class.java).single(),
+        )
+        org.junit.jupiter.api.Assertions.assertEquals(
+            0,
+            jdbcClient.sql("SELECT COUNT(*) FROM commit_fact").query(Int::class.java).single(),
+        )
+        org.junit.jupiter.api.Assertions.assertEquals(
+            0,
+            jdbcClient.sql("SELECT COUNT(*) FROM sync_run").query(Int::class.java).single(),
+        )
+        org.junit.jupiter.api.Assertions.assertEquals(
+            0,
+            jdbcClient.sql("SELECT COUNT(*) FROM sync_run_events").query(Int::class.java).single(),
+        )
+
+        val repoState = jdbcClient.sql(
+            """
+            SELECT last_successful_sync_run_id, last_successful_synced_at, last_seen_commit_sha, last_error_message
+            FROM repo_sync_state
+            WHERE repo_id = 'marcando-api'
+            """.trimIndent(),
+        ).query { rs, _ ->
+            listOf(
+                rs.getObject("last_successful_sync_run_id"),
+                rs.getString("last_successful_synced_at"),
+                rs.getString("last_seen_commit_sha"),
+                rs.getString("last_error_message"),
+            )
+        }.single()
+        org.junit.jupiter.api.Assertions.assertEquals(listOf(null, null, null, null), repoState)
+    }
+
+    @Test
     fun `invalid sync run request returns problem detail`() {
         mockMvc.perform(
             post("/api/sync/run")
@@ -335,6 +409,12 @@ class ApiContractTests(
 
     @Test
     fun `spa routes forward to index html`() {
+        mockMvc.perform(get("/sync"))
+            .andExpect(status().isOk)
+
+        mockMvc.perform(get("/explorer"))
+            .andExpect(status().isOk)
+
         mockMvc.perform(get("/widgets/new"))
             .andExpect(status().isOk)
 

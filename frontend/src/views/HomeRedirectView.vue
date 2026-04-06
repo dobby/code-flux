@@ -11,10 +11,10 @@ const hasPages = computed(() => workspace.orderedPages.length > 0)
 onMounted(async () => {
   await workspace.initialize()
   if (workspace.orderedPages[0]) {
-    await router.replace({ name: 'page', params: { pageId: workspace.orderedPages[0].id } })
+    await router.replace({ name: 'explorer' })
     return
   }
-  await router.replace({ name: 'widgets' })
+  await router.replace({ name: 'explorer' })
 })
 </script>
 

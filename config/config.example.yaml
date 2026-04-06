@@ -30,6 +30,9 @@ repos:
     excludeBranchPatterns:
       - "archive/*"
       - "tmp/*"
+    # Built-in exclusions already ignore common generated/build output such as
+    # dist/, build/, target/, out/, coverage/, node_modules/, .next/, .nuxt/,
+    # and artifact files like *.jar, *.war, and *.class.
     excludePathGlobs:
       - "docs/**"
       - "generated/**"

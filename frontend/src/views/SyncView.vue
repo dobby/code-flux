@@ -1,445 +1,519 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Circle, CircleCheck, GitBranch, LoaderCircle, RefreshCcw, Square, TimerReset } from 'lucide-vue-next'
+import { Circle, CircleCheck, GitBranch, LoaderCircle, RefreshCw, Terminal } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard'
 import { useWorkspaceStore } from '../stores/workspace'
 
 const dashboard = useDashboardStore()
 const workspace = useWorkspaceStore()
 
-type SyncRow = {
+type LogRowStatus = 'done' | 'running' | 'queued'
+type LogRowSource = 'git' | 'jira'
+interface LogRow {
   id: string
+  time: string
+  status: LogRowStatus
+  source: LogRowSource
   label: string
   detail: string
-  status: 'completed' | 'running' | 'queued' | 'failed'
-  icon: typeof GitBranch
-  percent?: number
+}
+
+function formatTimeHMS(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('en-GB', { hour12: false })
+}
+
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return 'recently'
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`
+  const days = Math.floor(hrs / 24)
+  return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
 const isRunning = computed(() => dashboard.syncStatus?.running ?? false)
 
-const currentLabel = computed(() => {
+const bannerTitle = computed(() => {
+  if (isRunning.value) {
+    return 'Sync in progress — Fetching repository data'
+  }
+  const lastRun = dashboard.syncStatus?.lastRun
+  if (!lastRun) return 'Repository sync'
+  if (lastRun.status === 'FAILED') return 'Repository sync — Last run failed'
+  return 'Repository sync — Idle'
+})
+
+const bannerSubtitle = computed(() => {
   if (isRunning.value && dashboard.currentSync) {
-    return dashboard.currentSync.stage
+    const { completedRepos, totalRepos } = dashboard.currentSync
+    const started = relativeTime(dashboard.syncStatus?.lastRun?.startedAt)
+    return `Processing commits from ${completedRepos + 1} of ${totalRepos} repositories · Started ${started}`
   }
-  return dashboard.syncStatus?.lastRun?.status === 'SUCCESS'
-    ? 'Sync complete'
-    : 'Sync idle'
+  const lastRun = dashboard.syncStatus?.lastRun
+  if (!lastRun) return 'Repository history is ready for the next run.'
+  if (lastRun.status === 'FAILED') return lastRun.message ?? 'The last sync run encountered an error.'
+  const repoCount = dashboard.syncStatus?.repos.length ?? 0
+  return `Last synced ${relativeTime(lastRun.finishedAt)} · ${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'} tracked`
 })
 
-const headline = computed(() => (isRunning.value ? 'Sync in progress' : 'Repository sync'))
+const bannerPercent = computed(() => dashboard.syncProgressPercent ?? 0)
 
-const progress = computed(() => dashboard.syncProgressPercent)
-
-const progressText = computed(() => {
-  if (dashboard.currentSync) {
-    return `${dashboard.syncProgressLabel ?? 'Processing repositories'} · ${dashboard.syncCurrentRepoLabel ?? 'Current repository'}`
-  }
-  return dashboard.syncStatus?.lastRun?.message ?? 'Repository history is ready for the next run.'
-})
-
-const canReset = computed(() => !isRunning.value && !dashboard.loading.sync)
-
-const logRows = computed<SyncRow[]>(() => {
-  if (dashboard.syncStatus?.logEntries.length) {
-    return dashboard.syncStatus.logEntries.map((entry) => ({
-      id: entry.eventKey,
-      label: entry.label,
-      detail: entry.detail ?? (entry.finishedAt ? `Finished ${new Date(entry.finishedAt).toLocaleString()}` : 'Queued'),
-      status: entry.status === 'COMPLETED' || entry.status === 'SUCCESS'
-        ? 'completed'
+const logRows = computed<LogRow[]>(() => {
+  const entries = dashboard.syncStatus?.logEntries ?? []
+  const rows: LogRow[] = entries.map((entry) => {
+    const status: LogRowStatus =
+      entry.status === 'COMPLETED' || entry.status === 'SUCCESS'
+        ? 'done'
         : entry.status === 'RUNNING'
           ? 'running'
-          : entry.status === 'FAILED'
-            ? 'failed'
-            : 'queued',
-      icon: entry.sourceKind === 'jira' ? TimerReset : GitBranch,
-      percent: entry.progressPercent ?? undefined,
-    }))
-  }
+          : 'queued'
+    const source: LogRowSource = entry.sourceKind === 'jira' ? 'jira' : 'git'
+    const time = status === 'done'
+      ? formatTimeHMS(entry.finishedAt)
+      : status === 'running'
+        ? formatTimeHMS(entry.startedAt)
+        : '—'
+    const detail = entry.detail
+      ?? (status === 'running' ? 'Fetching commits…' : status === 'queued' ? 'Queued' : '')
+    return { id: entry.eventKey, time, status, source, label: entry.label, detail }
+  })
 
-  const rows: SyncRow[] = []
-  const currentRepoId = dashboard.currentSync?.currentRepoId ?? null
-
-  for (const repo of dashboard.syncStatus?.repos ?? []) {
-    let status: SyncRow['status'] = 'queued'
-    let detail = repo.lastSuccessfulSyncedAt ? `Last synced ${new Date(repo.lastSuccessfulSyncedAt).toLocaleString()}` : 'Queued'
-    if (repo.status === 'FAILED' || repo.lastErrorMessage) {
-      status = 'failed'
-      detail = repo.lastErrorMessage ?? 'Sync failed'
-    } else if (repo.repoId === currentRepoId) {
-      status = 'running'
-      detail = dashboard.currentSync?.stage ?? 'Running'
-    } else if (repo.lastSuccessfulSyncedAt) {
-      status = 'completed'
-    }
-
+  // Inject synthetic Jira row if configured but no jira log entry exists
+  const hasJiraEntry = rows.some((r) => r.source === 'jira')
+  if (!hasJiraEntry && workspace.jiraStatus?.configured) {
+    const jiraDetail = isRunning.value
+      ? 'Queued · will run after git sync'
+      : workspace.jiraStatus.lastSyncAt
+        ? `Last sync ${relativeTime(workspace.jiraStatus.lastSyncAt)}`
+        : 'Not yet run'
     rows.push({
-      id: repo.repoId,
-      label: repo.repoId,
-      detail,
-      status,
-      icon: GitBranch,
-      percent: status === 'running' ? progress.value : undefined,
-    })
-  }
-
-  if (workspace.jiraStatus?.configured) {
-    rows.push({
-      id: 'jira-enrichment',
-      label: 'Jira enrichment',
-      detail: workspace.jiraStatus.lastSyncAt
-        ? `Last sync ${new Date(workspace.jiraStatus.lastSyncAt).toLocaleString()}`
-        : 'Queued until git sync completes',
-      status: dashboard.syncStatus?.running ? 'queued' : 'completed',
-      icon: TimerReset,
+      id: 'jira-synthetic',
+      time: '—',
+      status: isRunning.value ? 'queued' : 'done',
+      source: 'jira',
+      label: 'Jira — issue enrichment',
+      detail: jiraDetail,
     })
   }
 
   return rows
 })
 
-async function handleSyncAction() {
-  if (dashboard.syncStatus?.running) {
-    await dashboard.stopRunningSync()
-    return
-  }
-  await dashboard.triggerSync()
-}
+const groupedRows = computed(() => {
+  const rows = logRows.value
+  const done = rows
+    .filter((r) => r.status === 'done' && r.source === 'git')
+    .sort((a, b) => a.time.localeCompare(b.time))
+  const activeGit = rows
+    .filter((r) => r.status !== 'done' && r.source === 'git')
+    .sort((a, b) => (a.status === 'running' ? -1 : 1) - (b.status === 'running' ? -1 : 1))
+  const jira = rows.find((r) => r.source === 'jira') ?? null
+  return { done, activeGit, jira }
+})
 
-async function handleResetAction() {
-  const confirmed = window.confirm(
-    'Reset all synced throughput data? This clears ingested commits, files, aggregates, and sync history so you can resync from scratch.',
-  )
-  if (!confirmed) {
-    return
-  }
-  await dashboard.resetSyncedData()
+const needDivider1 = computed(
+  () => groupedRows.value.done.length > 0
+    && (groupedRows.value.activeGit.length > 0 || groupedRows.value.jira !== null),
+)
+
+const needDivider2 = computed(
+  () => groupedRows.value.jira !== null
+    && (groupedRows.value.done.length > 0 || groupedRows.value.activeGit.length > 0),
+)
+
+async function handleRunSync() {
+  await dashboard.triggerSync()
 }
 </script>
 
 <template>
   <section class="sync-view">
-    <header class="sync-view__header">
-      <div>
-        <p class="sync-view__eyebrow">Sync</p>
-        <h1>{{ headline }}</h1>
-        <p class="sync-view__subtitle">
-          {{ progressText }}
-        </p>
-      </div>
-      <div class="sync-view__actions">
-        <button
-          class="sync-view__action sync-view__action--ghost"
-          data-testid="sync-reset-button"
-          :disabled="!canReset"
-          type="button"
-          @click="handleResetAction"
-        >
-          <TimerReset :size="16" />
-          <span>Reset data</span>
-        </button>
-        <button
-          class="sync-view__action"
-          :class="isRunning ? 'sync-view__action--danger' : 'sync-view__action--primary'"
-          data-testid="sync-button"
-          :disabled="!!dashboard.currentSync?.stopRequested"
-          type="button"
-          @click="handleSyncAction"
-        >
-          <LoaderCircle v-if="dashboard.currentSync?.stopRequested" class="spin" :size="16" />
-          <Square v-else-if="isRunning" :size="15" />
-          <RefreshCcw v-else :size="16" />
-          <span>{{ isRunning ? 'Stop sync' : 'Run sync' }}</span>
-        </button>
-      </div>
-    </header>
-
-    <section class="sync-view__banner" :class="{ 'sync-view__banner--running': isRunning }">
-      <div class="sync-view__banner-copy">
-        <span class="sync-view__banner-kicker">Repository ingestion</span>
-        <strong>{{ currentLabel }}</strong>
-        <p>{{ dashboard.syncStatus?.lastRun?.message ?? 'Processing commits and preparing repository snapshots.' }}</p>
-      </div>
-      <div class="sync-view__banner-meta">
-        <strong>{{ progress }}%</strong>
-        <span>{{ dashboard.syncCurrentRepoLabel ?? (dashboard.currentSync?.currentRepoId ?? 'All repositories') }}</span>
-      </div>
-      <div class="sync-view__progress" aria-hidden="true">
-        <div class="sync-view__progress-fill" :style="{ width: `${progress}%` }" />
-      </div>
-    </section>
-
-    <section class="sync-view__log">
-      <div class="sync-view__log-header">
-        <div>
-          <h2>Sync log</h2>
-          <p class="sync-view__log-note">Live</p>
+    <!-- Sync Banner -->
+    <div class="sync-banner" :class="{ 'sync-banner--idle': !isRunning }">
+      <div class="sync-banner__row">
+        <RefreshCw class="sync-banner__icon" :size="18" />
+        <div class="sync-banner__text">
+          <p class="sync-banner__title">{{ bannerTitle }}</p>
+          <p class="sync-banner__subtitle">{{ bannerSubtitle }}</p>
         </div>
-        <span class="sync-view__live-pill" :class="{ 'sync-view__live-pill--active': isRunning }">
-          <Circle :size="8" />
-          {{ isRunning ? 'Live' : 'Idle' }}
+        <span v-if="isRunning" class="sync-banner__percent">{{ bannerPercent }}%</span>
+        <button
+          v-else
+          class="sync-banner__action"
+          data-testid="sync-button"
+          type="button"
+          @click="handleRunSync"
+        >
+          Run sync
+        </button>
+      </div>
+      <div v-if="isRunning" class="sync-banner__track">
+        <div class="sync-banner__fill" :style="{ width: bannerPercent + '%' }" />
+      </div>
+    </div>
+
+    <!-- Sync Log Panel -->
+    <div class="sync-log">
+      <div class="sync-log__header">
+        <Terminal class="sync-log__header-icon" :size="13" />
+        <span class="sync-log__header-title">Sync log</span>
+        <div class="sync-log__spacer" />
+        <span v-if="isRunning" class="sync-log__live">
+          <span class="sync-log__live-dot" />
+          Live
         </span>
       </div>
 
-      <div class="sync-view__rows">
-        <article
-          v-for="row in logRows"
+      <div class="sync-log__entries">
+        <!-- Done rows -->
+        <div
+          v-for="row in groupedRows.done"
           :key="row.id"
-          class="sync-view__row"
-          :class="`sync-view__row--${row.status}`"
+          class="log-row log-row--done"
         >
-          <div class="sync-view__row-icon">
-            <component :is="row.status === 'completed' ? CircleCheck : row.status === 'running' ? LoaderCircle : row.status === 'failed' ? Circle : row.icon" :size="15" />
-          </div>
-          <div class="sync-view__row-copy">
-            <strong>{{ row.label }}</strong>
-            <p>{{ row.detail }}</p>
-          </div>
-          <div class="sync-view__row-meta">
-            <span v-if="row.percent != null">{{ row.percent }}%</span>
-            <span v-else>{{ row.status }}</span>
-          </div>
-        </article>
+          <span class="log-row__time">{{ row.time }}</span>
+          <CircleCheck class="log-row__status-icon log-row__status-icon--done" :size="13" />
+          <GitBranch class="log-row__source-icon" :size="13" />
+          <span class="log-row__label">{{ row.label }}</span>
+          <span class="log-row__detail">{{ row.detail }}</span>
+        </div>
+
+        <div v-if="needDivider1" class="sync-log__divider" />
+
+        <!-- Running + queued git rows -->
+        <div
+          v-for="row in groupedRows.activeGit"
+          :key="row.id"
+          class="log-row"
+          :class="row.status === 'running' ? 'log-row--running' : 'log-row--queued'"
+        >
+          <span class="log-row__time">{{ row.time }}</span>
+          <LoaderCircle
+            v-if="row.status === 'running'"
+            class="log-row__status-icon log-row__status-icon--running"
+            :size="13"
+          />
+          <Circle
+            v-else
+            class="log-row__status-icon log-row__status-icon--queued"
+            :size="13"
+          />
+          <GitBranch
+            class="log-row__source-icon"
+            :class="{ 'log-row__source-icon--queued': row.status === 'queued' }"
+            :size="13"
+          />
+          <span
+            class="log-row__label"
+            :class="row.status === 'running' ? 'log-row__label--bold' : 'log-row__label--queued'"
+          >{{ row.label }}</span>
+          <span class="log-row__detail" :class="{ 'log-row__detail--queued': row.status === 'queued' }">{{ row.detail }}</span>
+        </div>
+
+        <div v-if="needDivider2" class="sync-log__divider" />
+
+        <!-- Jira row -->
+        <div v-if="groupedRows.jira" class="log-row log-row--jira">
+          <span class="log-row__time">{{ groupedRows.jira.time }}</span>
+          <Circle class="log-row__status-icon log-row__status-icon--queued" :size="13" />
+          <span class="log-row__jira-mark" aria-hidden="true">
+            <!-- Atlassian Jira Software mark (three-staircase rectangles) -->
+            <svg width="13" height="13" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M11.53 2C11.53 4.65 13.68 6.8 16.33 6.8H18.3V8.7C18.3 11.35 20.45 13.5 23.1 13.5V3A1 1 0 0 0 22.1 2H11.53Z" fill="#2684FF"/>
+              <path d="M6.77 6.8C6.77 9.45 8.92 11.6 11.57 11.6H13.54V13.5C13.54 16.15 15.69 18.3 18.34 18.3V7.8A1 1 0 0 0 17.34 6.8H6.77Z" fill="#2684FF" opacity="0.7"/>
+              <path d="M2 11.6C2 14.25 4.15 16.4 6.8 16.4H8.77V18.3C8.77 20.95 10.92 23.1 13.57 23.1V12.6A1 1 0 0 0 12.57 11.6H2Z" fill="#2684FF" opacity="0.5"/>
+            </svg>
+          </span>
+          <span class="log-row__label log-row__label--queued">{{ groupedRows.jira.label }}</span>
+          <span class="log-row__detail log-row__detail--queued">{{ groupedRows.jira.detail }}</span>
+        </div>
       </div>
-    </section>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .sync-view {
-  display: grid;
-  gap: 14px;
-  padding: 0;
-  max-width: 1040px;
-}
-
-.sync-view__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.sync-view__eyebrow,
-.sync-view__log-note {
-  margin: 0 0 4px;
-  color: #6b7280;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.sync-view__header h1 {
-  margin: 0;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.sync-view__subtitle {
-  margin: 2px 0 0;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.sync-view__action {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  border-radius: 8px;
-  min-height: 32px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.sync-view__actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sync-view__action--primary {
-  background: #4f46e5;
-  color: #fff;
-}
-
-.sync-view__action--danger {
-  background: #ef4444;
-  color: #fff;
-}
-
-.sync-view__action--ghost {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: #fff;
-  color: #334155;
-}
-
-.sync-view__banner {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px 16px;
-  overflow: hidden;
-  border-radius: 10px;
-  padding: 12px 14px 10px;
-  background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
-  color: #fff;
-}
-
-.sync-view__banner-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.sync-view__banner-kicker {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.86;
-}
-
-.sync-view__banner-copy strong {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.sync-view__banner-copy p {
-  margin: 0;
-  max-width: 720px;
-  font-size: 11px;
-  opacity: 0.88;
-}
-
-.sync-view__banner-meta {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  grid-row: 1 / span 2;
-  gap: 6px;
-  font-size: 11px;
+  gap: 20px;
+  padding: 24px;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 
-.sync-view__banner-meta strong {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.sync-view__progress {
-  grid-column: 1 / -1;
-  overflow: hidden;
-  border-radius: 999px;
-  height: 2px;
-  background: rgb(255 255 255 / 16%);
-}
-
-.sync-view__progress-fill {
-  height: 100%;
-  border-radius: inherit;
-  background: #fff;
-}
-
-.sync-view__log {
-  display: grid;
+/* ── Banner ── */
+.sync-banner {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+  height: 76px;
+  padding: 12px 20px;
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  padding: 10px 0;
-  background: #fff;
-  box-shadow: none;
+  background: var(--cf-accent);
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
-.sync-view__log-header {
+.sync-banner--idle {
+  justify-content: center;
+}
+
+.sync-banner__row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 0 14px;
 }
 
-.sync-view__log-header h2 {
+.sync-banner__icon {
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.sync-banner__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sync-banner__title {
   margin: 0;
-  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-banner__subtitle {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-banner__percent {
   font-size: 15px;
   font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
 }
 
-.sync-view__live-pill {
+.sync-banner__action {
+  flex-shrink: 0;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.sync-banner__action:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.sync-banner__track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sync-banner__fill {
+  height: 100%;
+  border-radius: 2px;
+  background: #fff;
+  transition: width 400ms ease;
+}
+
+/* ── Log panel ── */
+.sync-log {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--cf-border);
+  border-radius: 10px;
+  background: var(--cf-surface);
+  overflow: hidden;
+}
+
+.sync-log__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--cf-border);
+  flex-shrink: 0;
+}
+
+.sync-log__header-icon {
+  color: var(--cf-text-secondary);
+  flex-shrink: 0;
+}
+
+.sync-log__header-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cf-text);
+}
+
+.sync-log__spacer {
+  flex: 1 1 auto;
+}
+
+.sync-log__live {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: #ecfdf5;
-  color: #059669;
-  font-size: 12px;
-  font-weight: 700;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
-.sync-view__live-pill--active {
-  background: #eef2ff;
-  color: #4f46e5;
+.sync-log__live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+  animation: live-pulse 1.4s ease-in-out infinite;
 }
 
-.sync-view__rows {
-  display: grid;
-  gap: 0;
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
 }
 
-.sync-view__row {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  background: transparent;
-  border-top: 1px solid rgba(226, 232, 240, 0.72);
+.sync-log__entries {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
-.sync-view__row:first-child {
-  border-top: 0;
-}
-
-.sync-view__row--running {
-  background: #eef2ff;
-  color: #4338ca;
-}
-
-.sync-view__row--failed {
-  background: #fef2f2;
-  color: #b91c1c;
-}
-
-.sync-view__row-icon {
-  display: grid;
-  place-items: center;
-  color: inherit;
-}
-
-.sync-view__row-copy strong {
-  display: block;
+.sync-log__divider {
+  height: 1px;
+  background: var(--cf-border);
   margin: 0;
-  color: #111827;
+  flex-shrink: 0;
+}
+
+/* ── Log rows ── */
+.log-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.log-row--running {
+  height: 32px;
+}
+
+.log-row__time {
+  flex: 0 0 60px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--cf-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.log-row__status-icon {
+  flex-shrink: 0;
+}
+
+.log-row__status-icon--done {
+  color: #22c55e;
+}
+
+.log-row__status-icon--running {
+  color: var(--cf-accent);
+  animation: loader-spin 1s linear infinite;
+}
+
+.log-row__status-icon--queued {
+  color: var(--cf-border);
+}
+
+@keyframes loader-spin {
+  to { transform: rotate(360deg); }
+}
+
+.log-row__source-icon {
+  flex-shrink: 0;
+  color: var(--cf-text-secondary);
+}
+
+.log-row__source-icon--queued {
+  color: var(--cf-text-tertiary);
+}
+
+.log-row__jira-mark {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.log-row__label {
+  flex-shrink: 0;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
+  color: var(--cf-text);
+  white-space: nowrap;
 }
 
-.sync-view__row-copy p {
-  margin: 2px 0 0;
-  color: #64748b;
-  font-size: 11px;
+.log-row__label--bold {
+  font-weight: 600;
 }
 
-.sync-view__row-meta {
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 700;
+.log-row__label--queued {
+  color: var(--cf-text-tertiary);
+}
+
+.log-row__detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--cf-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-row__detail--queued {
+  color: var(--cf-text-tertiary);
 }
 </style>

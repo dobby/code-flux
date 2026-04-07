@@ -2,8 +2,8 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "frontend",
-      "runtimeExecutable": "true",
+      "name": "dev",
+      "runtimeExecutable": ".claude/start-dev.sh",
       "runtimeArgs": [],
       "port": 4173
     }

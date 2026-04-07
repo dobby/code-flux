@@ -19,8 +19,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  MessageSquarePlus,
-  RefreshCcw,
+  RefreshCw,
   Settings2,
   X,
 } from 'lucide-vue-next'
@@ -211,6 +210,20 @@ const currentSectionLabel = computed(() => {
 const syncProgressPercent = computed(() => dashboard.syncProgressPercent ?? 0)
 const RING_C = 44
 const syncRingOffset = computed(() => RING_C - (RING_C * syncProgressPercent.value / 100))
+
+const syncMenuOpen = ref(false)
+function toggleSyncMenu() { syncMenuOpen.value = !syncMenuOpen.value }
+function closeSyncMenu() { syncMenuOpen.value = false }
+async function syncMenuReset() {
+  closeSyncMenu()
+  const ok = window.confirm('Reset all synced throughput data? This clears ingested commits, files, aggregates, and sync history so you can resync from scratch.')
+  if (!ok) return
+  await dashboard.resetSyncedData()
+}
+async function syncMenuStop() {
+  closeSyncMenu()
+  await dashboard.stopRunningSync()
+}
 
 async function initialize() {
   await Promise.all([workspace.initialize(), dashboard.initialize()])
@@ -625,6 +638,12 @@ function handleDocumentPointer(event: MouseEvent) {
   ) {
     closeExplorerMenus()
   }
+  if (
+    !target.closest('.content-chrome__explorer-menu--sync')
+    && !target.closest('[data-testid="sync-more-button"]')
+  ) {
+    closeSyncMenu()
+  }
 }
 
 function handleDocumentKeydown(event: KeyboardEvent) {
@@ -756,21 +775,24 @@ onBeforeUnmount(() => {
 
             <RouterLink
               class="sidebar-item"
-              :class="{ 'sidebar-item--active': route.name === 'sync' }"
+              :class="{ 'sidebar-item--active': route.name === 'sync' || dashboard.syncStatus?.running }"
               :to="{ name: 'sync' }"
               data-testid="nav-sync"
             >
-              <span class="sidebar-icon">
-                <svg v-if="dashboard.syncStatus?.running" class="sync-ring" width="15" height="15" viewBox="0 0 18 18">
+              <RefreshCw
+                class="sidebar-icon"
+                :class="{ 'sidebar-icon--sync-active': dashboard.syncStatus?.running }"
+                :size="15"
+              />
+              <span class="sidebar-item__label">Sync</span>
+              <template v-if="dashboard.syncStatus?.running">
+                <span class="sidebar-item__spacer" />
+                <svg class="sync-ring" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
                   <circle class="sync-ring__track" cx="9" cy="9" r="7" />
                   <circle class="sync-ring__fill" cx="9" cy="9" r="7" :style="{ strokeDashoffset: syncRingOffset }" />
                 </svg>
-                <RefreshCcw v-else :size="15" />
-              </span>
-              <span class="sidebar-item__label">Sync</span>
-              <span v-if="dashboard.syncStatus?.running" class="sync-status-badge sync-status-badge--live">
-                {{ syncProgressPercent }}%
-              </span>
+                <span class="sync-status-badge sync-status-badge--live">{{ syncProgressPercent }}%</span>
+              </template>
             </RouterLink>
           </nav>
 
@@ -1227,6 +1249,44 @@ onBeforeUnmount(() => {
       </template>
       <div class="content-chrome__spacer" />
       <div ref="contentChromeActionsRef" class="content-chrome__actions">
+        <template v-if="route.name === 'sync'">
+          <button
+            class="content-chrome__ghost content-chrome__ghost--overflow"
+            type="button"
+            aria-haspopup="menu"
+            :aria-expanded="syncMenuOpen"
+            data-testid="sync-more-button"
+            @click="toggleSyncMenu"
+          >
+            <MoreHorizontal :size="14" />
+          </button>
+          <div
+            v-if="syncMenuOpen"
+            class="content-chrome__explorer-menu content-chrome__explorer-menu--sync"
+            role="menu"
+          >
+            <button
+              v-if="dashboard.syncStatus?.running"
+              class="content-chrome__menu-option"
+              type="button"
+              role="menuitem"
+              :disabled="dashboard.currentSync?.stopRequested"
+              @click="syncMenuStop"
+            >
+              Stop sync
+            </button>
+            <button
+              class="content-chrome__menu-option"
+              type="button"
+              role="menuitem"
+              :disabled="!!dashboard.syncStatus?.running"
+              data-testid="sync-reset-button"
+              @click="syncMenuReset"
+            >
+              Reset data
+            </button>
+          </div>
+        </template>
         <button
           v-if="isExplorerRoute && hasExplorerToolbarOverflow"
           class="content-chrome__ghost content-chrome__ghost--overflow"

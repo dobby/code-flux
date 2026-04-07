@@ -28,7 +28,14 @@
       "Bash(__NEW_LINE_10f6533ac22cc6ab__ source:*)",
       "Bash(__NEW_LINE_01908b01436cf230__ echo:*)",
       "Bash(__NEW_LINE_01908b01436cf230__ grep:*)",
-      "Bash(head -20 })"
+      "Bash(head -20 })",
+      "Bash(curl -s http://localhost:4173/)",
+      "Bash(lsof -ti:4173)",
+      "Bash(curl -s --max-time 5 http://127.0.0.1:4173/)",
+      "Bash(ps -p 519 -o pid,command)",
+      "Bash(lsof -iTCP:4173)",
+      "Bash(curl -v --max-time 5 http://127.0.0.1:4173/)",
+      "Bash(kill 519)"
     ]
   }
 }

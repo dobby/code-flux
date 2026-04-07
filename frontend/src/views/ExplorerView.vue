@@ -10,6 +10,7 @@ import {
 } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard'
 import { useExplorerStore } from '../stores/explorer'
+import { useTheme } from '../composables/useTheme'
 import ExplorerAnnotationModal from '../components/ExplorerAnnotationModal.vue'
 import VChart from 'vue-echarts'
 import type { EChartsOption } from 'echarts'
@@ -19,6 +20,7 @@ const route = useRoute()
 const router = useRouter()
 const dashboard = useDashboardStore()
 const explorer = useExplorerStore()
+const { isDark } = useTheme()
 
 const metricNoun = computed(() => {
   switch (explorer.metric) {
@@ -165,7 +167,7 @@ const chartOption = computed<EChartsOption>(() => {
           itemWidth: 10,
           itemHeight: 10,
           textStyle: {
-            color: '#61708d',
+            color: isDark.value ? '#a7b2cd' : '#61708d',
             fontSize: 11,
           },
         }
@@ -191,7 +193,7 @@ const chartOption = computed<EChartsOption>(() => {
       splitNumber: 4,
       axisLabel: {
         show: true,
-        color: '#7b8aa5',
+        color: isDark.value ? '#8e9abb' : '#7b8aa5',
         fontSize: 11,
         margin: 10,
         formatter: (value: number) => `${Math.round(value)}`,
@@ -201,7 +203,7 @@ const chartOption = computed<EChartsOption>(() => {
       splitLine: {
         show: true,
         lineStyle: {
-          color: 'rgba(148, 163, 184, 0.16)',
+          color: isDark.value ? 'rgba(120, 136, 168, 0.22)' : 'rgba(148, 163, 184, 0.16)',
         },
       },
     },
@@ -645,18 +647,18 @@ onMounted(async () => {
 .explorer-chart__title {
   font-size: 12px;
   font-weight: 600;
-  color: #162033;
+  color: var(--cf-text);
   line-height: 1;
 }
 
 .explorer-chart__badge {
   margin-left: auto;
   border-radius: 4px;
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--cf-accent-subtle);
   padding: 3px 8px;
   font-size: 11px;
   font-weight: 500;
-  color: #6366f1;
+  color: var(--cf-accent);
   line-height: 1.3;
 }
 
@@ -679,7 +681,7 @@ onMounted(async () => {
   place-items: center;
   gap: 8px;
   height: 100%;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
   font-size: 11px;
   text-align: center;
 }
@@ -689,10 +691,10 @@ onMounted(async () => {
 }
 
 .explorer-chart__retry {
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border: 1px solid var(--cf-border);
   border-radius: 6px;
   background: transparent;
-  color: #61708d;
+  color: var(--cf-text-secondary);
   font-size: 11px;
   font-weight: 500;
   padding: 4px 10px;
@@ -711,7 +713,7 @@ onMounted(async () => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid rgba(148, 163, 184, 0.22);
+  border-right: 1px solid var(--cf-border);
   min-height: 0;
 }
 
@@ -729,7 +731,7 @@ onMounted(async () => {
   gap: 8px;
   height: 40px;
   padding: 0 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  border-bottom: 1px solid var(--cf-border);
   flex-shrink: 0;
 }
 
@@ -740,14 +742,14 @@ onMounted(async () => {
 .explorer-split__pane-title {
   font-size: 12px;
   font-weight: 600;
-  color: #162033;
+  color: var(--cf-text);
 }
 
 .explorer-split__pane-count {
   margin-left: auto;
   font-size: 11px;
   font-weight: 500;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
 }
 
 .explorer-split__open-btn {
@@ -756,10 +758,10 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border: 1px solid var(--cf-border);
   border-radius: 6px;
   background: transparent;
-  color: #61708d;
+  color: var(--cf-text-secondary);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -767,7 +769,7 @@ onMounted(async () => {
 
 .explorer-split__empty {
   padding: 20px;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
   font-size: 11px;
 }
 
@@ -779,10 +781,10 @@ onMounted(async () => {
 .explorer-split__retry-btn,
 .explorer-detail__retry-btn {
   justify-self: start;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border: 1px solid var(--cf-border);
   border-radius: 6px;
   background: transparent;
-  color: #61708d;
+  color: var(--cf-text-secondary);
   font-size: 11px;
   font-weight: 500;
   padding: 4px 10px;
@@ -803,23 +805,23 @@ onMounted(async () => {
   min-height: 56px;
   padding: 8px 16px;
   border: 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  border-bottom: 1px solid var(--cf-border);
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
 
 .explorer-split__commit-row--active {
-  background: rgba(255, 255, 255, 0.6);
+  background: color-mix(in srgb, var(--cf-accent-subtle) 70%, var(--cf-surface) 30%);
 }
 
 .explorer-split__commit-icon {
   flex-shrink: 0;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
 }
 
 .explorer-split__commit-row--active .explorer-split__commit-icon {
-  color: #6366f1;
+  color: var(--cf-accent);
 }
 
 .explorer-split__commit-body {
@@ -833,7 +835,7 @@ onMounted(async () => {
 .explorer-split__commit-subject {
   font-size: 12px;
   font-weight: 500;
-  color: #162033;
+  color: var(--cf-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -841,7 +843,7 @@ onMounted(async () => {
 
 .explorer-split__commit-meta {
   font-size: 11px;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -850,11 +852,11 @@ onMounted(async () => {
 .explorer-split__commit-tag {
   flex-shrink: 0;
   border-radius: 4px;
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--cf-accent-subtle);
   padding: 2px 6px;
   font-size: 10px;
   font-weight: 500;
-  color: #6366f1;
+  color: var(--cf-accent);
 }
 
 .explorer-split__detail-body {
@@ -876,13 +878,13 @@ onMounted(async () => {
 .explorer-detail__subject {
   font-size: 14px;
   font-weight: 600;
-  color: #162033;
+  color: var(--cf-text);
   line-height: 1.4;
 }
 
 .explorer-detail__hash {
   font-size: 11px;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
 }
 
 .explorer-detail__author-row {
@@ -907,17 +909,17 @@ onMounted(async () => {
 .explorer-detail__author-name {
   font-size: 12px;
   font-weight: 500;
-  color: #61708d;
+  color: var(--cf-text-secondary);
 }
 
 .explorer-detail__author-repo {
   font-size: 12px;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
 }
 
 .explorer-detail__divider {
   height: 1px;
-  background: rgba(148, 163, 184, 0.22);
+  background: var(--cf-border);
   flex-shrink: 0;
 }
 
@@ -935,7 +937,7 @@ onMounted(async () => {
 .explorer-detail__stat-label {
   font-size: 10px;
   font-weight: 500;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -946,7 +948,7 @@ onMounted(async () => {
   line-height: 1.1;
 }
 
-.explorer-detail__stat-value--neutral { color: #162033; }
+.explorer-detail__stat-value--neutral { color: var(--cf-text); }
 .explorer-detail__stat-value--added { color: #22c55e; }
 .explorer-detail__stat-value--removed { color: #ef4444; }
 
@@ -965,7 +967,7 @@ onMounted(async () => {
 .explorer-detail__section-title {
   font-size: 12px;
   font-weight: 600;
-  color: #162033;
+  color: var(--cf-text);
 }
 
 .explorer-detail__add-btn {
@@ -974,10 +976,10 @@ onMounted(async () => {
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border: 1px solid var(--cf-border);
   border-radius: 6px;
   background: transparent;
-  color: #61708d;
+  color: var(--cf-text-secondary);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -985,7 +987,7 @@ onMounted(async () => {
 
 .explorer-detail__empty {
   font-size: 11px;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
 }
 
 .explorer-detail__empty--error {
@@ -999,16 +1001,16 @@ onMounted(async () => {
   gap: 8px;
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  border: 1px solid color-mix(in srgb, var(--cf-accent) 22%, transparent);
   border-radius: 8px;
-  background: rgba(99, 102, 241, 0.04);
+  background: color-mix(in srgb, var(--cf-accent) 8%, transparent);
   text-align: left;
   cursor: pointer;
 }
 
 .explorer-detail__annotation-icon {
   flex-shrink: 0;
-  color: #6366f1;
+  color: var(--cf-accent);
 }
 
 .explorer-detail__annotation-body {
@@ -1022,12 +1024,12 @@ onMounted(async () => {
 .explorer-detail__annotation-title {
   font-size: 12px;
   font-weight: 600;
-  color: #162033;
+  color: var(--cf-text);
 }
 
 .explorer-detail__annotation-desc {
   font-size: 11px;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1057,11 +1059,11 @@ onMounted(async () => {
 
 .explorer-detail__file-row-button:hover:not(:disabled) {
   border-radius: 6px;
-  background: rgba(99, 102, 241, 0.06);
+  background: color-mix(in srgb, var(--cf-accent) 10%, transparent);
 }
 
 .explorer-detail__file-row-button:hover:not(:disabled) .explorer-detail__file-path {
-  color: #3f4d69;
+  color: var(--cf-text);
 }
 
 .explorer-detail__file-row-button:disabled {
@@ -1071,7 +1073,7 @@ onMounted(async () => {
 
 .explorer-detail__file-icon {
   flex-shrink: 0;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
 }
 
 .explorer-detail__file-path {
@@ -1080,7 +1082,7 @@ onMounted(async () => {
   display: block;
   font-size: 11px;
   font-weight: 500;
-  color: #61708d;
+  color: var(--cf-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1093,7 +1095,7 @@ onMounted(async () => {
   flex-shrink: 0;
   font-size: 10px;
   font-weight: 500;
-  color: #94a0b8;
+  color: var(--cf-text-tertiary);
 }
 
 .explorer-detail__more-files {
@@ -1101,10 +1103,11 @@ onMounted(async () => {
   padding: 4px 0;
   border: 0;
   background: transparent;
-  color: #6366f1;
+  color: var(--cf-accent);
   font-size: 11px;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
+
 </style>

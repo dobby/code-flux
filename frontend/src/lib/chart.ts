@@ -1,6 +1,6 @@
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { BarChart, HeatmapChart, LineChart, PieChart } from 'echarts/charts'
+import { BarChart, HeatmapChart, LineChart, PieChart, TreemapChart } from 'echarts/charts'
 import {
   CalendarComponent,
   DataZoomComponent,
@@ -19,6 +19,7 @@ use([
   HeatmapChart,
   LineChart,
   PieChart,
+  TreemapChart,
   CalendarComponent,
   GridComponent,
   TooltipComponent,

@@ -29,6 +29,7 @@ const metricNoun = computed(() => {
     case 'lines_removed':
       return 'lines removed'
     case 'net_lines':
+    case 'cumulative_net':
       return 'net lines'
     case 'file_count':
       return 'files'
@@ -52,7 +53,26 @@ const selectedDayRepoCount = computed(() => {
   return repos.size
 })
 
-const chartSeries = computed(() => explorer.analytics?.series ?? [])
+const chartSeries = computed(() => {
+  const baseSeries = explorer.analytics?.series ?? []
+  if (explorer.metric !== 'cumulative_net') {
+    return baseSeries
+  }
+
+  return baseSeries.map((entry) => {
+    let runningTotal = 0
+    return {
+      ...entry,
+      points: entry.points.map((point) => {
+        runningTotal += point.value
+        return {
+          ...point,
+          value: runningTotal,
+        }
+      }),
+    }
+  })
+})
 
 const chartDays = computed(() => {
   const days = new Set<string>()
@@ -307,7 +327,7 @@ function openSelectedCommit() {
   const c = explorer.selectedCommit
   if (!c) return
   void router.push({
-    name: 'explorer-commit',
+    name: 'activity-commit',
     params: { repoId: c.repoId, commitSha: c.commitSha },
     query: explorer.buildQuery(),
   })
@@ -477,7 +497,7 @@ onMounted(async () => {
           <span class="explorer-split__pane-title">Commit detail</span>
           <button class="explorer-split__open-btn" type="button" @click="openSelectedCommit">
             <ExternalLink :size="13" />
-            <span>Open in editor</span>
+            <span>Open full detail</span>
           </button>
         </header>
         <div v-if="!explorer.selectedCommit" class="explorer-split__empty">Select a commit to see details.</div>

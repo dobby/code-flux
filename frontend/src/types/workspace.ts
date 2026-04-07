@@ -308,6 +308,59 @@ export interface SnapshotStatusResponse {
   items: SnapshotStatusItem[]
 }
 
+export interface CodebaseStructureRequest {
+  repoId: string
+  dateFrom: string
+  dateTo: string
+  authorIds: string[]
+  languages: string[]
+  categories: string[]
+  productCodes: string[]
+}
+
+export interface CodebaseTreeNode {
+  key: string
+  label: string
+  path: string
+  kind: 'directory' | 'file'
+  filesCount: number
+  linesCount: number
+  netLines: number
+  children: CodebaseTreeNode[]
+}
+
+export interface CodebaseBreakdownRow {
+  key: string
+  label: string
+  filesCount: number
+  linesCount: number
+  netLines: number
+}
+
+export interface CodebaseSummary {
+  repoId: string
+  refName: string | null
+  commitSha: string | null
+  lastSnapshotDate: string | null
+  repoFiles: number
+  repoLines: number
+  visibleFiles: number
+  visibleLines: number
+  languagesCount: number
+  categoriesCount: number
+  activeFilesInRange: number
+  netLinesInRange: number
+}
+
+export interface CodebaseStructureResponse {
+  summary: CodebaseSummary
+  tree: CodebaseTreeNode
+  languages: CodebaseBreakdownRow[]
+  categories: CodebaseBreakdownRow[]
+  topDirectories: CodebaseBreakdownRow[]
+  filterSemantics: string[]
+}
+
 export interface SyncLogEntry {
   eventKey: string
   sourceKind: string

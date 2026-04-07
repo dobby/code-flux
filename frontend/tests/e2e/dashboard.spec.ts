@@ -132,16 +132,7 @@ test.describe('v2 workspace', () => {
     await page.goto('/')
     await ensureLegacySync(page)
     await page.goto('/settings/general')
-    await page.getByTestId('build-current-snapshots').click()
-
-    await expect.poll(
-      async () => page.evaluate(async () => {
-        const response = await fetch('/api/v2/snapshots/status')
-        const body = await response.json()
-        return body.items.length
-      }),
-      { timeout: 30_000 },
-    ).toBeGreaterThan(0)
+    await ensureCurrentSnapshots(page)
 
     const pageId = await createPageFromSidebar(page, `Repo state page ${Date.now()}`)
     await page.getByTestId(`sidebar-page-link-${pageId}`).click()
@@ -172,21 +163,164 @@ test.describe('v2 workspace', () => {
 
   test('route smoke checks for v2 states', async ({ page }) => {
     const routes = [
-      { path: '/widgets' },
-      { path: '/widgets/new' },
-      { path: '/settings/general' },
-      { path: '/settings/jira' },
-      { path: '/sync' },
-      { path: '/explorer' },
-      { path: '/legacy/overview' },
+      { path: '/activity', expected: /\/activity\/?$/ },
+      { path: '/explorer', expected: /\/explorer\/?$/ },
+      { path: '/codebase', expected: /\/codebase(\/[^/]+)?\/?$/ },
+      { path: '/contributors', expected: /\/contributors\/?$/ },
+      { path: '/widgets', expected: /\/widgets\/?$/ },
+      { path: '/widgets/new', expected: /\/widgets\/new\/?$/ },
+      { path: '/settings/general', expected: /\/settings\/general\/?$/ },
+      { path: '/settings/sync', expected: /\/settings\/sync\/?$/ },
+      { path: '/settings/jira', expected: /\/settings\/jira\/?$/ },
+      { path: '/sync', expected: /\/sync\/?$/ },
+      { path: '/legacy/overview', expected: /\/legacy\/overview\/?$/ },
     ]
 
     for (const route of routes) {
       await page.goto(route.path)
-      await expect(page).toHaveURL(new RegExp(`${route.path}/?$`))
+      await expect(page).toHaveURL(route.expected)
       await expect(page.getByTestId('app-sidebar')).toBeVisible()
       await expect(page.getByTestId('app-header')).toBeVisible()
     }
+  })
+
+  test('sidebar reflects the phase 1 information architecture', async ({ page }) => {
+    await page.goto('/')
+
+    await expect(page.getByTestId('nav-activity')).toBeVisible()
+    await expect(page.getByTestId('nav-activity')).toContainText('Activity')
+    await expect(page.getByTestId('nav-codebase')).toBeVisible()
+    await expect(page.getByTestId('nav-codebase')).toContainText('Codebase')
+    await expect(page.getByTestId('nav-contributors')).toBeVisible()
+    await expect(page.getByTestId('nav-contributors')).toContainText('Contributors')
+    await expect(page.getByTestId('nav-widgets')).toBeVisible()
+    await expect(page.getByTestId('nav-widgets')).toContainText('Widget Catalog')
+    await expect(page.getByTestId('nav-sync')).toHaveCount(0)
+    await expect(page.getByText('Pages')).toBeVisible()
+
+    await page.getByTestId('nav-settings').click()
+    await expect(page).toHaveURL(/\/settings\/general$/)
+
+    const settingsLabels = await page
+      .locator('[data-testid="app-sidebar"] .sidebar-menu')
+      .nth(1)
+      .locator('.sidebar-item__label')
+      .allInnerTexts()
+
+    expect(settingsLabels).toEqual([
+      'General',
+      'Sync',
+      'Jira',
+    ])
+  })
+
+  test('activity supports cumulative net and commit detail navigation', async ({ page }) => {
+    await page.goto('/activity?range=90d&group=none')
+    await ensureLegacySync(page)
+    await page.goto('/activity?range=90d&group=none')
+
+    await expect(page.getByTestId('app-header')).toContainText('Activity')
+    await expect(page.getByText(/selected/i).first()).toBeVisible()
+
+    await page.getByRole('button', { name: /Commit Count/i }).click()
+    await page.getByRole('menuitemradio', { name: /^Cumulative Net$/ }).click()
+
+    await expect(page).toHaveURL(/metric=cumulative_net/)
+    await expect(page.locator('.explorer-chart__title')).toHaveText('Cumulative Net')
+    await expect(page.getByRole('button', { name: /Open full detail/i })).toBeVisible()
+
+    await page.getByRole('button', { name: /Open full detail/i }).click()
+    await expect(page).toHaveURL(/\/activity\/commit\//)
+    await expect(page.getByText('Activity commit detail')).toBeVisible()
+    await expect(page.locator('.commit-detail__back')).toContainText('Activity')
+  })
+
+  test('contributors supports metric switching with shared chrome filters', async ({ page }) => {
+    await page.goto('/contributors')
+    await ensureLegacySync(page)
+    await page.goto('/contributors')
+
+    await expect(page.getByTestId('app-header')).toContainText('Contributors')
+    await expect(page.getByRole('button', { name: /Last 14 days/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /All repositories/i })).toBeVisible()
+
+    await page.getByRole('button', { name: /Last 14 days/i }).click()
+    await page.getByRole('menuitemradio', { name: /^Last 90 days$/ }).click()
+
+    await expect(page.getByTestId('contributors-leaderboard')).toBeVisible()
+    await expect(page.getByTestId('contributors-trend-chart')).toBeVisible()
+
+    await page.getByTestId('contributors-metric-commits_count').click()
+    await expect(page.getByRole('columnheader', { name: 'Commits' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Commit Count' })).toHaveClass(/contributors-metric-switcher__button--active/)
+
+    await page.getByTestId('contributors-metric-lines_added').click()
+    await expect(page.getByRole('columnheader', { name: 'Added' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Lines Added' })).toHaveClass(/contributors-metric-switcher__button--active/)
+  })
+
+  test('codebase shows growth data with shared header filters', async ({ page }) => {
+    await page.goto('/')
+    await ensureLegacySync(page)
+    await page.goto('/settings/general')
+    await ensureCurrentSnapshots(page)
+    await page.goto('/')
+
+    const repos = await page.evaluate(async () => {
+      const response = await fetch('/api/bootstrap')
+      const body = await response.json()
+      return body.repos.filter((repo: { enabled: boolean }) => repo.enabled)
+    })
+
+    expect(repos.length).toBeGreaterThan(0)
+
+    await page.getByTestId('nav-codebase').click()
+    await expect(page).toHaveURL(new RegExp(`/codebase/${repos[0].id}$`))
+    await expect(page.getByTestId('nav-codebase-children')).toBeVisible()
+    await expect(page.getByTestId(`nav-codebase-repo-${repos[0].id}`)).toBeVisible()
+    await expect(page.getByTestId('codebase-shell')).toContainText(repos[0].displayName)
+    await expect(page.getByRole('button', { name: /Last 14 days/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^\+ Filter/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /All repositories/i })).toHaveCount(0)
+    await expect(page.getByTestId('codebase-filter-semantics')).toContainText(
+      'Author filters do not alter the current tree; they only change Net activity sizing.',
+    )
+
+    await page.getByRole('button', { name: /Last 14 days/i }).click()
+    await page.getByRole('menuitemradio', { name: /^Last 90 days$/ }).click()
+    await expect(page.getByTestId('codebase-summary-row')).toContainText('Last 90 days')
+    await expect(page.getByTestId('codebase-growth-chart')).toBeVisible()
+    await expect(page.getByTestId('codebase-treemap')).toBeVisible()
+    await expect(page.getByTestId('codebase-snapshot-summary')).toBeVisible()
+    await expect(page.getByTestId('codebase-breakdown-languages')).toBeVisible()
+
+    await page.getByTestId('codebase-size-mode-files').click()
+    await expect(page.getByTestId('codebase-size-mode-files')).toHaveClass(/codebase-mode-switcher__button--active/)
+    await expect(page.getByTestId('codebase-treemap')).toBeVisible()
+
+    await page.getByTestId('codebase-size-mode-net').click()
+    await expect(page.getByTestId('codebase-size-mode-net')).toHaveClass(/codebase-mode-switcher__button--active/)
+
+    await page.getByRole('button', { name: /^\+ Filter/ }).click()
+    await page.getByRole('button', { name: 'Author' }).click()
+    await expect(page.getByRole('button', { name: /^Author$/ })).toBeVisible()
+    await page.getByRole('button', { name: /^Author$/ }).click()
+    const firstAuthorOption = page.getByRole('menuitemcheckbox').first()
+    const firstAuthorLabel = (await firstAuthorOption.textContent())?.trim()
+    expect(firstAuthorLabel).toBeTruthy()
+    await firstAuthorOption.click()
+    await expect(page.getByTestId('codebase-summary-row')).toContainText('Author:')
+
+    await page.getByTestId('nav-codebase').click()
+    await expect(page.getByTestId('nav-codebase-children')).toHaveCount(0)
+
+    await page.getByTestId('nav-codebase').click()
+    await expect(page.getByTestId('nav-codebase-children')).toBeVisible()
+
+    const targetRepo = repos[Math.min(1, repos.length - 1)]
+    await page.getByTestId(`nav-codebase-repo-${targetRepo.id}`).click()
+    await expect(page).toHaveURL(new RegExp(`/codebase/${targetRepo.id}$`))
+    await expect(page.getByTestId('codebase-shell')).toContainText(targetRepo.displayName)
   })
 
   test('sidebar collapse covers the sidebar while keeping controls fixed', async ({ page }) => {
@@ -381,6 +515,19 @@ async function ensureLegacySync(page: Page) {
     }),
     { timeout: 60_000 },
   ).toBe(false)
+}
+
+async function ensureCurrentSnapshots(page: Page) {
+  await page.getByTestId('build-current-snapshots').click()
+
+  await expect.poll(
+    async () => page.evaluate(async () => {
+      const response = await fetch('/api/v2/snapshots/status')
+      const body = await response.json()
+      return body.items.length
+    }),
+    { timeout: 30_000 },
+  ).toBeGreaterThan(0)
 }
 
 function currentPageId(page: Page) {

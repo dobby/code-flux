@@ -5,6 +5,8 @@ import type {
   AnnotationTypeV2,
   BootstrapV2Response,
   CommitDetailResponse,
+  CodebaseStructureRequest,
+  CodebaseStructureResponse,
   DayDrilldownResponse,
   EditorLaunchRequest,
   EditorLaunchResponse,
@@ -357,4 +359,11 @@ export function backfillSnapshots() {
 
 export function getSnapshotStatus() {
   return request<SnapshotStatusResponse>('/api/v2/snapshots/status')
+}
+
+export function getCodebaseStructure(payload: CodebaseStructureRequest) {
+  return request<CodebaseStructureResponse>('/api/v2/codebase/structure', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }

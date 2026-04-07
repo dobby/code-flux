@@ -75,7 +75,7 @@ function goBack() {
   }
 
   void router.push({
-    name: 'explorer',
+    name: 'activity',
     query: Object.keys(route.query).length > 0
       ? route.query
       : (selectedDate.value ? { date: selectedDate.value } : undefined),
@@ -163,10 +163,10 @@ watch(
     <header class="commit-detail__header">
       <button class="commit-detail__back" type="button" @click="goBack">
         <ArrowLeft :size="15" />
-        <span>Explorer</span>
+        <span>Activity</span>
       </button>
       <div class="commit-detail__title">
-        <p>Commit detail</p>
+        <p>Activity commit detail</p>
         <h1>{{ commitTitle }}</h1>
         <small>{{ props.repoId }} · {{ props.commitSha }}</small>
       </div>

@@ -11,10 +11,10 @@ const hasPages = computed(() => workspace.orderedPages.length > 0)
 onMounted(async () => {
   await workspace.initialize()
   if (workspace.orderedPages[0]) {
-    await router.replace({ name: 'explorer' })
+    await router.replace({ name: 'activity' })
     return
   }
-  await router.replace({ name: 'explorer' })
+  await router.replace({ name: 'activity' })
 })
 </script>
 

@@ -274,6 +274,60 @@ textarea {
   text-overflow: ellipsis;
 }
 
+.sidebar-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-item--branch {
+  gap: 8px;
+}
+
+.sidebar-tree__caret {
+  flex-shrink: 0;
+  color: var(--cf-text-tertiary);
+  transition: transform 140ms ease, color 120ms ease;
+}
+
+.sidebar-tree__caret--open {
+  transform: rotate(0deg);
+}
+
+.sidebar-item--branch:not(.sidebar-item--active) .sidebar-tree__caret {
+  transform: rotate(-90deg);
+}
+
+.sidebar-item--branch:hover .sidebar-tree__caret,
+.sidebar-item--branch.sidebar-item--active .sidebar-tree__caret {
+  color: var(--cf-text);
+}
+
+.sidebar-tree__children {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 18px;
+}
+
+.sidebar-item--child {
+  gap: 8px;
+  color: var(--cf-text-tertiary);
+}
+
+.sidebar-item__bullet {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cf-border) 72%, transparent);
+  flex-shrink: 0;
+}
+
+.sidebar-item--child.sidebar-item--active .sidebar-item__bullet,
+.sidebar-item--child:hover .sidebar-item__bullet {
+  background: var(--cf-accent);
+}
+
 /* Section rows (label + add button) */
 .sidebar-section-row {
   display: flex;

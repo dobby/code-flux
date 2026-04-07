@@ -688,6 +688,62 @@ data class SnapshotTriggerResponse(
     val rebuiltRepos: List<String>,
 )
 
+data class CodebaseStructureRequest(
+    @field:NotBlank
+    val repoId: String,
+    @field:NotNull
+    val dateFrom: LocalDate,
+    @field:NotNull
+    val dateTo: LocalDate,
+    val authorIds: List<String> = emptyList(),
+    val languages: List<String> = emptyList(),
+    val categories: List<String> = emptyList(),
+    val productCodes: List<String> = emptyList(),
+)
+
+data class CodebaseTreeNode(
+    val key: String,
+    val label: String,
+    val path: String,
+    val kind: String,
+    val filesCount: Int,
+    val linesCount: Long,
+    val netLines: Long,
+    val children: List<CodebaseTreeNode> = emptyList(),
+)
+
+data class CodebaseBreakdownRow(
+    val key: String,
+    val label: String,
+    val filesCount: Int,
+    val linesCount: Long,
+    val netLines: Long,
+)
+
+data class CodebaseSummary(
+    val repoId: String,
+    val refName: String?,
+    val commitSha: String?,
+    val lastSnapshotDate: LocalDate?,
+    val repoFiles: Int,
+    val repoLines: Long,
+    val visibleFiles: Int,
+    val visibleLines: Long,
+    val languagesCount: Int,
+    val categoriesCount: Int,
+    val activeFilesInRange: Int,
+    val netLinesInRange: Long,
+)
+
+data class CodebaseStructureResponse(
+    val summary: CodebaseSummary,
+    val tree: CodebaseTreeNode,
+    val languages: List<CodebaseBreakdownRow>,
+    val categories: List<CodebaseBreakdownRow>,
+    val topDirectories: List<CodebaseBreakdownRow>,
+    val filterSemantics: List<String>,
+)
+
 data class CommitFileChangeDto(
     val filePath: String,
     val oldPath: String?,

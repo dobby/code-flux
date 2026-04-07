@@ -5,6 +5,7 @@ import com.company.throughput.v2.model.BootstrapV2Response
 import com.company.throughput.v2.model.CreateAnnotationV2Request
 import com.company.throughput.v2.model.CreatePageRequest
 import com.company.throughput.v2.model.CreateWidgetDefinitionRequest
+import com.company.throughput.v2.model.CodebaseStructureRequest
 import com.company.throughput.v2.model.DayDrilldownRequest
 import com.company.throughput.v2.model.ExecuteQueryRequest
 import com.company.throughput.v2.model.FeatureFlagsDto
@@ -24,6 +25,7 @@ import com.company.throughput.v2.model.UpdatePageRequest
 import com.company.throughput.v2.model.UpdatePageWidgetRequest
 import com.company.throughput.v2.model.UpdateWidgetDefinitionRequest
 import com.company.throughput.v2.service.AnnotationV2Service
+import com.company.throughput.v2.service.CodebaseService
 import com.company.throughput.v2.service.DayDrilldownService
 import com.company.throughput.v2.service.JiraClient
 import com.company.throughput.v2.service.JiraSettingsService
@@ -261,6 +263,16 @@ class ExplorerV2Controller(
     @PostMapping("/open-file")
     fun openFile(@Valid @RequestBody request: FileOpenRequest) =
         explorerService.openFile(request)
+}
+
+@RestController
+@RequestMapping("/api/v2/codebase")
+class CodebaseV2Controller(
+    private val codebaseService: CodebaseService,
+) {
+    @PostMapping("/structure")
+    fun structure(@Valid @RequestBody request: CodebaseStructureRequest) =
+        codebaseService.structure(request)
 }
 
 @RestController

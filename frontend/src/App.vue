@@ -21,6 +21,7 @@ import {
   Plus,
   RefreshCw,
   Settings2,
+  Users,
   X,
 } from 'lucide-vue-next'
 import { useShellChrome } from './composables/useShellChrome'
@@ -71,10 +72,22 @@ const currentPage = computed(() => (
   workspace.pages.find((page) => page.id === route.params.pageId) ?? null
 ))
 
-const isExplorerRoute = computed(() => route.name === 'explorer' || route.name === 'explorer-commit')
+const isExplorerRoute = computed(() => route.name === 'activity' || route.name === 'activity-commit')
+const isContributorsRoute = computed(() => route.name === 'contributors')
+const isCodebaseRoute = computed(() => route.name === 'codebase' || route.name === 'codebase-repo')
+const usesSharedFilterToolbar = computed(() => isExplorerRoute.value || isContributorsRoute.value || isCodebaseRoute.value)
 const isSettingsRoute = computed(() => (
-  route.name === 'settings-general' || route.name === 'settings-jira'
+  route.name === 'settings-general' || route.name === 'settings-jira' || route.name === 'settings-sync'
 ))
+const currentCodebaseRepoId = computed(() => (
+  typeof route.params.repoId === 'string' && route.params.repoId.trim()
+    ? route.params.repoId
+    : null
+))
+const enabledCodebaseRepos = computed(() => (
+  (dashboard.bootstrap?.repos ?? []).filter((repo) => repo.enabled)
+))
+const codebaseNavExpanded = ref(true)
 
 type ExplorerMenuStyle = { top: string; left?: string; right?: string }
 type ExplorerOverflowPanel =
@@ -184,20 +197,23 @@ const overflowExplorerFilterKinds = computed(() => (
   explorer.visibleExtraFilterKinds.filter((kind) => overflowedToolbarKeys.value.includes(`chip-${kind}`))
 ))
 
-const showInlineMetric = computed(() => !overflowedToolbarKeys.value.includes('metric'))
-const showInlineDate = computed(() => !overflowedToolbarKeys.value.includes('date'))
-const showInlineRepo = computed(() => !overflowedToolbarKeys.value.includes('repo'))
-const showInlineAddFilter = computed(() => !overflowedToolbarKeys.value.includes('add-filter'))
-const showInlineSecondaryControls = computed(() => !overflowedToolbarKeys.value.includes('secondary'))
+const showInlineMetric = computed(() => isExplorerRoute.value && !overflowedToolbarKeys.value.includes('metric'))
+const showInlineDate = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('date'))
+const showInlineRepo = computed(() => (isExplorerRoute.value || isContributorsRoute.value) && !overflowedToolbarKeys.value.includes('repo'))
+const showInlineAddFilter = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('add-filter'))
+const showInlineSecondaryControls = computed(() => isExplorerRoute.value && !overflowedToolbarKeys.value.includes('secondary'))
 const hasExplorerToolbarOverflow = computed(() => overflowedToolbarKeys.value.length > 0)
 
 const currentSectionLabel = computed(() => {
   switch (route.name) {
     case 'settings-general': return 'General'
     case 'settings-jira': return 'Jira'
-    case 'sync': return 'Sync'
-    case 'explorer':
-    case 'explorer-commit': return 'Explorer'
+    case 'settings-sync': return 'Sync'
+    case 'activity':
+    case 'activity-commit': return 'Activity'
+    case 'codebase': return 'Codebase'
+    case 'codebase-repo': return 'Codebase'
+    case 'contributors': return 'Contributors'
     case 'legacy-overview': return 'Legacy Overview'
     case 'widgets':
     case 'widget-new':
@@ -206,10 +222,6 @@ const currentSectionLabel = computed(() => {
     default: return currentPage.value?.title ?? 'Code Flux'
   }
 })
-
-const syncProgressPercent = computed(() => dashboard.syncProgressPercent ?? 0)
-const RING_C = 44
-const syncRingOffset = computed(() => RING_C - (RING_C * syncProgressPercent.value / 100))
 
 const syncMenuOpen = ref(false)
 function toggleSyncMenu() { syncMenuOpen.value = !syncMenuOpen.value }
@@ -260,6 +272,40 @@ async function createPagePrompt() {
   await workspace.createPageAndRefresh({ title: title.trim() })
   const page = workspace.orderedPages.at(-1)
   if (page) await router.push({ name: 'page', params: { pageId: page.id } })
+}
+
+function setCodebaseNavExpanded(nextExpanded: boolean) {
+  codebaseNavExpanded.value = nextExpanded
+  window.localStorage.setItem('code-flux-v2-codebase-nav-expanded', String(nextExpanded))
+}
+
+function resolveCodebaseTargetRepoId() {
+  return currentCodebaseRepoId.value ?? enabledCodebaseRepos.value[0]?.id ?? null
+}
+
+function navigateToCodebase(repoId?: string | null) {
+  const targetRepoId = repoId ?? resolveCodebaseTargetRepoId()
+  if (targetRepoId) {
+    void router.push({ name: 'codebase-repo', params: { repoId: targetRepoId } })
+    return
+  }
+  void router.push({ name: 'codebase' })
+}
+
+function handleCodebaseNavClick() {
+  if (route.name === 'codebase') {
+    setCodebaseNavExpanded(true)
+    navigateToCodebase()
+    return
+  }
+
+  if (route.name === 'codebase-repo') {
+    setCodebaseNavExpanded(!codebaseNavExpanded.value)
+    return
+  }
+
+  setCodebaseNavExpanded(true)
+  navigateToCodebase()
 }
 
 async function renamePagePrompt(pageId: string, currentTitle: string) {
@@ -566,7 +612,7 @@ function updateToolbarOverflow() {
   const toolbar = explorerToolbarRef.value
   const measure = explorerToolbarMeasureRef.value
   const overflowButtonWidth = 34
-  if (!header || !title || !actions || !toolbar || !measure || !isExplorerRoute.value) {
+  if (!header || !title || !actions || !toolbar || !measure || !usesSharedFilterToolbar.value) {
     overflowedToolbarKeys.value = []
     return
   }
@@ -574,12 +620,12 @@ function updateToolbarOverflow() {
   const available = header.clientWidth - title.offsetWidth - actions.offsetWidth - 88 - overflowButtonWidth
   if (available <= 0) {
     overflowedToolbarKeys.value = [
-      'metric',
+      ...(isExplorerRoute.value ? ['metric'] : []),
       'date',
-      'repo',
+      ...((isExplorerRoute.value || isContributorsRoute.value) ? ['repo'] : []),
       ...explorer.visibleExtraFilterKinds.map((kind) => `chip-${kind}`),
       'add-filter',
-      'secondary',
+      ...(isExplorerRoute.value ? ['secondary'] : []),
     ]
     return
   }
@@ -591,12 +637,12 @@ function updateToolbarOverflow() {
 
   const baseKeys: string[] = []
   const optionalKeys = [
-    'metric',
+    ...(isExplorerRoute.value ? ['metric'] : []),
     'date',
-    'repo',
+    ...((isExplorerRoute.value || isContributorsRoute.value) ? ['repo'] : []),
     ...explorer.visibleExtraFilterKinds.map((kind) => `chip-${kind}`),
     'add-filter',
-    'secondary',
+    ...(isExplorerRoute.value ? ['secondary'] : []),
   ]
   let used = baseKeys.reduce((sum, key) => sum + widthFor(key), 0)
   const nextOverflowed: string[] = []
@@ -656,6 +702,13 @@ onMounted(() => {
   sidebarCollapsed.value = window.localStorage.getItem('code-flux-v2-sidebar-collapsed') === 'true'
   const stored = Number(window.localStorage.getItem('code-flux-v2-sidebar-width') ?? '')
   if (Number.isFinite(stored) && stored >= 220 && stored <= 400) expandedSidebarWidth.value = stored
+  const storedCodebaseExpanded = window.localStorage.getItem('code-flux-v2-codebase-nav-expanded')
+  if (storedCodebaseExpanded === 'true' || storedCodebaseExpanded === 'false') {
+    codebaseNavExpanded.value = storedCodebaseExpanded === 'true'
+  }
+  if (isCodebaseRoute.value) {
+    codebaseNavExpanded.value = true
+  }
   void initialize()
   document.addEventListener('click', handleDocumentPointer)
   document.addEventListener('keydown', handleDocumentKeydown)
@@ -673,7 +726,7 @@ onMounted(() => {
   })
 })
 
-watch(isExplorerRoute, (isRoute) => {
+watch(usesSharedFilterToolbar, (isRoute) => {
   if (!isRoute) {
     closeExplorerMenus()
   }
@@ -683,6 +736,9 @@ watch(
   () => route.name,
   () => {
     closeExplorerMenus()
+    if (isCodebaseRoute.value) {
+      setCodebaseNavExpanded(true)
+    }
     void nextTick(() => {
       updateToolbarOverflow()
     })
@@ -734,11 +790,19 @@ onBeforeUnmount(() => {
             </button>
           </nav>
           <nav class="sidebar-menu">
-            <RouterLink class="sidebar-item" :to="{ name: 'settings-general' }">
+            <RouterLink class="sidebar-item" :to="{ name: 'settings-general' }" data-testid="settings-nav-general">
               <Settings2 class="sidebar-icon" :size="15" />
               <span class="sidebar-item__label">General</span>
             </RouterLink>
-            <RouterLink class="sidebar-item" :to="{ name: 'settings-jira' }">
+            <RouterLink class="sidebar-item" :to="{ name: 'settings-sync' }" data-testid="settings-nav-sync">
+              <RefreshCw
+                class="sidebar-icon"
+                :class="{ 'sidebar-icon--sync-active': dashboard.syncStatus?.running }"
+                :size="15"
+              />
+              <span class="sidebar-item__label">Sync</span>
+            </RouterLink>
+            <RouterLink class="sidebar-item" :to="{ name: 'settings-jira' }" data-testid="settings-nav-jira">
               <svg class="sidebar-icon" width="15" height="15" viewBox="0 0 640 640" aria-hidden="true">
                 <path
                   fill="currentColor"
@@ -755,12 +819,58 @@ onBeforeUnmount(() => {
           <nav class="sidebar-menu">
             <RouterLink
               class="sidebar-item"
-              :class="{ 'sidebar-item--active': route.name === 'explorer' || route.name === 'explorer-commit' }"
-              :to="{ name: 'explorer' }"
-              data-testid="nav-explorer"
+              :class="{ 'sidebar-item--active': route.name === 'activity' || route.name === 'activity-commit' }"
+              :to="{ name: 'activity' }"
+              data-testid="nav-activity"
             >
               <BarChart3 class="sidebar-icon" :size="15" />
-              <span class="sidebar-item__label">Explorer</span>
+              <span class="sidebar-item__label">Activity</span>
+            </RouterLink>
+
+            <div class="sidebar-tree">
+              <button
+                class="sidebar-item sidebar-item--branch"
+                :class="{ 'sidebar-item--active': isCodebaseRoute }"
+                data-testid="nav-codebase"
+                type="button"
+                @click="handleCodebaseNavClick"
+              >
+                <GitBranch class="sidebar-icon" :size="15" />
+                <span class="sidebar-item__label">Codebase</span>
+                <ChevronDown
+                  class="sidebar-tree__caret"
+                  :class="{ 'sidebar-tree__caret--open': codebaseNavExpanded }"
+                  :size="14"
+                />
+              </button>
+
+              <div
+                v-if="codebaseNavExpanded && enabledCodebaseRepos.length"
+                class="sidebar-tree__children"
+                data-testid="nav-codebase-children"
+              >
+                <RouterLink
+                  v-for="repo in enabledCodebaseRepos"
+                  :key="repo.id"
+                  class="sidebar-item sidebar-item--child"
+                  :class="{ 'sidebar-item--active': route.name === 'codebase-repo' && route.params.repoId === repo.id }"
+                  :data-testid="`nav-codebase-repo-${repo.id}`"
+                  :to="{ name: 'codebase-repo', params: { repoId: repo.id } }"
+                >
+                  <span class="sidebar-item__bullet" aria-hidden="true" />
+                  <span class="sidebar-item__label">{{ repo.displayName }}</span>
+                </RouterLink>
+              </div>
+            </div>
+
+            <RouterLink
+              class="sidebar-item"
+              :class="{ 'sidebar-item--active': route.name === 'contributors' }"
+              :to="{ name: 'contributors' }"
+              data-testid="nav-contributors"
+            >
+              <Users class="sidebar-icon" :size="15" />
+              <span class="sidebar-item__label">Contributors</span>
             </RouterLink>
 
             <RouterLink
@@ -771,28 +881,6 @@ onBeforeUnmount(() => {
             >
               <LayoutGrid class="sidebar-icon" :size="15" />
               <span class="sidebar-item__label">Widget Catalog</span>
-            </RouterLink>
-
-            <RouterLink
-              class="sidebar-item"
-              :class="{ 'sidebar-item--active': route.name === 'sync' || dashboard.syncStatus?.running }"
-              :to="{ name: 'sync' }"
-              data-testid="nav-sync"
-            >
-              <RefreshCw
-                class="sidebar-icon"
-                :class="{ 'sidebar-icon--sync-active': dashboard.syncStatus?.running }"
-                :size="15"
-              />
-              <span class="sidebar-item__label">Sync</span>
-              <template v-if="dashboard.syncStatus?.running">
-                <span class="sidebar-item__spacer" />
-                <svg class="sync-ring" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                  <circle class="sync-ring__track" cx="9" cy="9" r="7" />
-                  <circle class="sync-ring__fill" cx="9" cy="9" r="7" :style="{ strokeDashoffset: syncRingOffset }" />
-                </svg>
-                <span class="sync-status-badge sync-status-badge--live">{{ syncProgressPercent }}%</span>
-              </template>
             </RouterLink>
           </nav>
 
@@ -834,6 +922,7 @@ onBeforeUnmount(() => {
           <button
             class="sidebar-item"
             :class="{ 'sidebar-item--active': isSettingsRoute }"
+            data-testid="nav-settings"
             type="button"
             @click="navigateToSettings"
           >
@@ -854,7 +943,7 @@ onBeforeUnmount(() => {
 
     <header ref="contentChromeRef" class="content-chrome" data-testid="app-header">
       <span ref="contentChromeTitleRef" class="content-chrome__title">{{ currentSectionLabel }}</span>
-      <template v-if="isExplorerRoute">
+      <template v-if="usesSharedFilterToolbar">
         <div ref="explorerToolbarRef" class="content-chrome__explorer-toolbar">
           <div class="content-chrome__toolbar-group">
             <div v-if="showInlineMetric" class="content-chrome__toolbar-item" data-toolbar-key="metric">
@@ -973,7 +1062,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div ref="explorerToolbarMeasureRef" class="content-chrome__explorer-toolbar-measure" aria-hidden="true">
-            <div class="content-chrome__toolbar-item" data-measure-key="metric">
+            <div v-if="isExplorerRoute" class="content-chrome__toolbar-item" data-measure-key="metric">
               <div class="content-chrome__pill">
                 <BarChart3 :size="13" />
                 <span>{{ explorer.metricLabel }}</span>
@@ -1016,7 +1105,11 @@ onBeforeUnmount(() => {
                 <span>{{ explorer.activeFilterCount ? `+ Filter (${explorer.activeFilterCount})` : '+ Filter' }}</span>
               </div>
             </div>
-            <div class="content-chrome__toolbar-item content-chrome__toolbar-item--secondary" data-measure-key="secondary">
+            <div
+              v-if="isExplorerRoute"
+              class="content-chrome__toolbar-item content-chrome__toolbar-item--secondary"
+              data-measure-key="secondary"
+            >
               <div class="content-chrome__toolbar-divider" aria-hidden="true" />
               <div class="content-chrome__toolbar-group content-chrome__toolbar-group--secondary">
                 <div class="content-chrome__pill">
@@ -1249,7 +1342,7 @@ onBeforeUnmount(() => {
       </template>
       <div class="content-chrome__spacer" />
       <div ref="contentChromeActionsRef" class="content-chrome__actions">
-        <template v-if="route.name === 'sync'">
+        <template v-if="route.name === 'settings-sync'">
           <button
             class="content-chrome__ghost content-chrome__ghost--overflow"
             type="button"
@@ -1288,7 +1381,7 @@ onBeforeUnmount(() => {
           </div>
         </template>
         <button
-          v-if="isExplorerRoute && hasExplorerToolbarOverflow"
+          v-if="usesSharedFilterToolbar && hasExplorerToolbarOverflow"
           class="content-chrome__ghost content-chrome__ghost--overflow"
           type="button"
           aria-haspopup="menu"
@@ -1517,7 +1610,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div
-            v-if="!showInlineSecondaryControls"
+            v-if="isExplorerRoute && !showInlineSecondaryControls"
             class="content-chrome__menu-section"
           >
             <span class="content-chrome__menu-section-title">View</span>

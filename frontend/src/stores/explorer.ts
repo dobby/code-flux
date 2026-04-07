@@ -23,6 +23,7 @@ import { useDashboardStore } from './dashboard'
 export type ExplorerChartStyle = 'bar' | 'line' | 'area'
 export type ExplorerRangePreset = '7d' | '14d' | '30d' | '90d' | 'custom'
 export type ExplorerExtraFilterKind = 'author' | 'language' | 'category' | 'product'
+export type ExplorerMetric = Metric | 'cumulative_net'
 
 export const EXPLORER_GROUP_BY_OPTIONS: Array<{ value: GroupBy; label: string }> = [
   { value: 'author', label: 'Author' },
@@ -41,10 +42,11 @@ export const EXPLORER_CHART_STYLE_OPTIONS: Array<{ value: ExplorerChartStyle; la
   { value: 'bar', label: 'Bar' },
 ]
 
-export const EXPLORER_METRIC_OPTIONS: Array<{ value: Metric; label: string }> = [
+export const EXPLORER_METRIC_OPTIONS: Array<{ value: ExplorerMetric; label: string }> = [
   { value: 'lines_added', label: 'Lines Added' },
   { value: 'lines_removed', label: 'Lines Removed' },
   { value: 'net_lines', label: 'Net Lines' },
+  { value: 'cumulative_net', label: 'Cumulative Net' },
   { value: 'commit_count', label: 'Commit Count' },
   { value: 'file_count', label: 'File Count' },
 ]
@@ -138,7 +140,7 @@ export const useExplorerStore = defineStore('explorer', () => {
   const selectedDate = ref('')
   const selectedCommitSha = ref<string | null>(null)
   const selectedSeriesKey = ref<string | null>(null)
-  const metric = ref<Metric>('commit_count')
+  const metric = ref<ExplorerMetric>('commit_count')
   const groupBy = ref<GroupBy>('author')
   const chartStyle = ref<ExplorerChartStyle>('line')
   const showLegend = ref(true)
@@ -371,11 +373,12 @@ export const useExplorerStore = defineStore('explorer', () => {
     const requestId = ++lastAnalyticsRequestId.value
     loadingAnalytics.value = true
     analyticsError.value = null
+    const backendMetric: Metric = metric.value === 'cumulative_net' ? 'net_lines' : metric.value
 
     try {
       const response = await queryAnalytics({
         dateRange: effectiveDateRange.value,
-        metric: metric.value,
+        metric: backendMetric,
         groupBy: groupBy.value,
         filters: {
           authorIds: selectedAuthorIds.value,
@@ -571,7 +574,7 @@ export const useExplorerStore = defineStore('explorer', () => {
     groupBy.value = nextGroupBy
   }
 
-  function setMetric(nextMetric: Metric) {
+  function setMetric(nextMetric: ExplorerMetric) {
     selectedSeriesKey.value = null
     metric.value = nextMetric
   }
@@ -737,12 +740,16 @@ export const useExplorerStore = defineStore('explorer', () => {
   }
 
   function syncQueryToUrl(router: Router) {
+    const currentRouteName = router.currentRoute.value.name
+    if (currentRouteName !== 'activity' && currentRouteName !== 'activity-commit') {
+      return
+    }
     const query = buildQuery()
     if (queriesMatch(router.currentRoute.value.query, query)) {
       return
     }
     try {
-      void router.replace({ name: 'explorer', query })
+      void router.replace({ name: 'activity', query })
     } catch {
       // swallow NavigationFailure
     }
@@ -954,8 +961,8 @@ function normalizeGroupBy(value: unknown): GroupBy {
   return EXPLORER_GROUP_BY_OPTIONS.some((option) => option.value === value) ? value as GroupBy : 'author'
 }
 
-function normalizeMetric(value: unknown): Metric {
-  return EXPLORER_METRIC_OPTIONS.some((option) => option.value === value) ? value as Metric : 'commit_count'
+function normalizeMetric(value: unknown): ExplorerMetric {
+  return EXPLORER_METRIC_OPTIONS.some((option) => option.value === value) ? value as ExplorerMetric : 'commit_count'
 }
 
 function normalizeChartStyle(value: unknown): ExplorerChartStyle {
@@ -969,5 +976,5 @@ function normalizeSeriesKey(value: unknown): string | null {
 }
 
 function toMessage(caught: unknown) {
-  return caught instanceof Error ? caught.message : 'Unexpected explorer error'
+  return caught instanceof Error ? caught.message : 'Unexpected activity error'
 }

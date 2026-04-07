@@ -20,8 +20,11 @@ This is primarily a navigation, query, and page-composition change. The existing
 
 - Rename the current Explore page to `Activity`
 - Keep time-based code movement and drilldown on `Activity`
+- Add a top-level `Codebase` section for structure and growth
 - Add a top-level `Contributors` page focused on ranking and contributor stats
-- Add a collapsible `Codebase` sidebar folder with one child page per repository
+- Keep `Widget Catalog` as a top-level app area
+- Preserve a separate `Pages` section for user-created widget pages
+- Move `Sync` into `Settings` and remove it from the main app menu
 - Show both actual repository growth and cumulative net activity on Codebase pages
 - Add a treemap-based structural view that is current-state first
 
@@ -42,9 +45,15 @@ This is primarily a navigation, query, and page-composition change. The existing
 The user-facing navigation should become:
 
 - `Activity`
+- `Codebase` (top-level item or collapsible folder when repo children are shown)
 - `Contributors`
-- `Codebase` (collapsible folder)
-- existing settings and other utility areas
+- `Widget Catalog`
+- `Pages`
+- `Settings`
+
+`Pages` is explicitly for user-created pages composed from widgets. It is not the same as the fixed product surfaces above it.
+
+`Sync` moves under `Settings` and is no longer a first-level app navigation item.
 
 ### Activity
 
@@ -88,7 +97,7 @@ No composite activity score in v1.
 
 ### Codebase
 
-`Codebase` is a collapsible sidebar folder, visually similar to a file/folder navigation group.
+`Codebase` is a top-level navigation area that can expand to show repository child pages, visually similar to a file/folder navigation group.
 
 Behavior:
 
@@ -136,8 +145,9 @@ Each repository-specific Codebase page should be current-state first.
 Recommended layout:
 
 1. compact growth chart header
-2. treemap as the primary visualization
-3. supporting structural breakdowns below or beside the treemap
+2. filter bar for structural and activity-scoped filtering
+3. treemap as the primary visualization
+4. supporting structural breakdowns below or beside the treemap
 
 The compact growth chart header should show two series:
 
@@ -145,6 +155,15 @@ The compact growth chart header should show two series:
 - cumulative net lines over time from activity facts
 
 The chart is supportive context, not the page's main identity.
+
+The filter bar should sit above the treemap and support the same kinds of exploration users will want on the tree itself, including filters such as:
+
+- category, including `production` and `test`
+- author
+- language
+- other existing dimensions that already map cleanly to current inventory or activity facts
+
+The page keeps its single-repo scope, but the tree itself can still be narrowed by these filters.
 
 If growth analysis later expands materially, it can move into its own page or subpage without changing the v1 data model.
 
@@ -163,6 +182,8 @@ That means:
 - time-range-dependent metrics may affect tile size, but not the underlying tree
 
 This distinction must be clear in the UI.
+
+The treemap should use `ECharts`, not a custom canvas or DOM treemap implementation. The implementation should stay inside the project’s existing charting stack and configuration model.
 
 ### Repository scope
 
@@ -243,6 +264,8 @@ Relevant existing sources:
 - `repo_state_snapshot_breakdowns`
 - `file_inventory_current`
 
+Codebase filtering will also need activity-side data for time-range-sensitive views such as `Net activity in selected range`, so backend queries may combine current inventory structure with activity facts when that mode is selected.
+
 ### Key semantic rule
 
 The UI must not imply that:
@@ -304,6 +327,7 @@ This can be built on top of current throughput facts without a new sync pipeline
 Codebase needs backend support for:
 
 - a repository-specific growth query returning actual LOC and cumulative net series
+- a repository-specific filter bar model that can constrain current structure and activity-sized modes
 - current-tree treemap aggregation from `file_inventory_current`
 - path-prefix aggregation of `commit_file_fact` inside a time range for the `Net activity` size mode
 
@@ -322,8 +346,11 @@ That feature would require richer persisted structural history and is intentiona
 Required navigation changes:
 
 - rename `Explore` to `Activity`
+- add top-level `Codebase`
 - add top-level `Contributors`
-- add collapsible `Codebase` folder
+- keep `Widget Catalog` at top level
+- add a clear `Pages` section for user-created widget pages
+- move `Sync` into `Settings`
 - add one repository child entry under Codebase per enabled repo
 
 ### Toolbar behavior
@@ -341,6 +368,7 @@ Codebase:
 
 - remove repository selection from the toolbar
 - preserve time range if needed for growth chart and activity-sized treemap modes
+- add a filter bar above the treemap
 - expose the treemap size-mode switcher in the page header or local control bar
 
 ### Empty states
@@ -362,6 +390,7 @@ Show all configured repos in the Codebase folder even when a repo has no snapsho
 - Cumulative net can diverge materially from actual LOC; this is expected and should be presented as such.
 - Contributor leaderboards can produce very different winners depending on metric; this is a feature, not a bug, and the selected metric should stay explicit.
 - Codebase pages should remain single-repo even if the rest of the app supports multi-repo filters elsewhere.
+- Codebase filters must be explicit about whether they affect current structure, activity sizing, or both.
 
 ---
 
@@ -377,10 +406,13 @@ Show all configured repos in the Codebase folder even when a repo has no snapsho
 ### Frontend
 
 - renamed Activity navigation and route behavior
+- main-menu order and the Pages section structure
 - Contributors metric switching and sorting
 - collapsible Codebase folder interactions
 - repository child page selection
+- Sync relocation into Settings
 - Codebase treemap mode switching
+- Codebase filter bar behavior
 - empty-state rendering for missing snapshots and empty activity ranges
 
 ### Regression
@@ -396,9 +428,10 @@ Show all configured repos in the Codebase folder even when a repo has no snapsho
 Implement this as a focused product evolution rather than a platform rewrite:
 
 1. rename Explore to Activity and preserve existing behavior
-2. add Contributors on top of existing throughput queries
-3. add Codebase repo child pages backed by existing snapshot and inventory facts
-4. add the new query shapes required for growth and treemap sizing
+2. apply the new top-level navigation order and move Sync into Settings
+3. add Contributors on top of existing throughput queries
+4. add Codebase repo child pages backed by existing snapshot and inventory facts
+5. add the new query shapes required for growth, filtering, and treemap sizing
 
 This keeps the rollout aligned with the current system boundaries and avoids speculative infrastructure work.
 
@@ -406,10 +439,13 @@ This keeps the rollout aligned with the current system boundaries and avoids spe
 
 ## Acceptance Criteria
 
-- The sidebar shows `Activity`, `Contributors`, and a collapsible `Codebase` folder.
+- The sidebar shows `Activity`, `Codebase`, `Contributors`, and `Widget Catalog` above a distinct `Pages` section.
+- `Sync` is removed from the main menu and appears under `Settings`.
 - The current Explore page is fully renamed to `Activity` without breaking drilldown behavior.
 - Contributors is a separate page with metric-switched leaderboard behavior.
 - Codebase has one child page per repository and no repo selector in its toolbar.
+- Codebase pages expose a filter bar above the treemap.
 - Codebase pages show both actual LOC growth and cumulative net growth.
+- Codebase treemap is implemented with `ECharts`.
 - Codebase treemap supports `LOC`, `Files`, and `Net activity in selected range`.
 - The implementation ships without a sync-engine rewrite or new historical tree snapshot model.

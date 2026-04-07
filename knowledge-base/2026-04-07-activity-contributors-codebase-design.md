@@ -145,7 +145,7 @@ Each repository-specific Codebase page should be current-state first.
 Recommended layout:
 
 1. compact growth chart header
-2. filter bar for structural and activity-scoped filtering
+2. shared page header bar with title and filters
 3. treemap as the primary visualization
 4. supporting structural breakdowns below or beside the treemap
 
@@ -156,7 +156,13 @@ The compact growth chart header should show two series:
 
 The chart is supportive context, not the page's main identity.
 
-The filter bar should sit above the treemap and support the same kinds of exploration users will want on the tree itself, including filters such as:
+The Codebase page should follow the same app chrome as the other main surfaces:
+
+- the page title lives in the top header bar
+- page filters also live in the top header bar
+- the content body should not repeat the title in a second internal title block
+
+The header-bar filters should support the same kinds of exploration users will want on the tree itself, including filters such as:
 
 - category, including `production` and `test`
 - author
@@ -368,7 +374,7 @@ Codebase:
 
 - remove repository selection from the toolbar
 - preserve time range if needed for growth chart and activity-sized treemap modes
-- add a filter bar above the treemap
+- place Codebase filters in the top header bar, consistent with the rest of the app
 - expose the treemap size-mode switcher in the page header or local control bar
 
 ### Empty states
@@ -444,7 +450,7 @@ This keeps the rollout aligned with the current system boundaries and avoids spe
 - The current Explore page is fully renamed to `Activity` without breaking drilldown behavior.
 - Contributors is a separate page with metric-switched leaderboard behavior.
 - Codebase has one child page per repository and no repo selector in its toolbar.
-- Codebase pages expose a filter bar above the treemap.
+- Codebase pages place title and filters in the top header bar rather than duplicating them inside the body.
 - Codebase pages show both actual LOC growth and cumulative net growth.
 - Codebase treemap is implemented with `ECharts`.
 - Codebase treemap supports `LOC`, `Files`, and `Net activity in selected range`.

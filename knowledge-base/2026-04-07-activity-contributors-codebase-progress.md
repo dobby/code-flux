@@ -170,3 +170,33 @@ Related design: [2026-04-07-activity-contributors-codebase-design.md](2026-04-07
 - [x] Fixed sparse-snapshot growth rendering so `Actual LOC` shows a visible marker when the selected range contains only a few snapshot points
 - [x] Re-verified Activity metric switching, `Cumulative Net`, and `Open full detail` navigation in-browser
 - [x] Re-verified the Settings IA move so `Sync` is accessible under `/settings/sync`
+
+### 2026-04-08 Pencil alignment pass
+
+- [x] Re-checked the Pencil frames for `Activity`, `Contributors`, and `Codebase` against the live app in a browser session instead of relying on build-only verification
+- [x] Auto-collapsed the repo subtree outside Codebase routes so the sidebar matches the Pencil navigation model on Activity and Contributors
+- [x] Tightened Contributors proportions and mini-chart placement to match the approved Pencil composition more closely
+- [x] Tightened Codebase card heights, summary row density, and structure/growth panel spacing to match the approved Pencil composition more closely
+- [x] Re-verified the updated pages visually with fresh browser screenshots after the CSS and chrome adjustments
+- [x] Replaced the remaining custom mini-chart renderers on Contributors and Codebase with ECharts-driven implementations while preserving the Pencil-oriented layouts
+- [x] Switched the Codebase structure panel to an ECharts custom-series layout so it stays library-backed while matching the approved left-plus-right-stack composition more closely
+
+### 2026-04-08 Settings Pencil alignment pass
+
+- [x] Added the missing `Appearance` and `Advanced` settings routes so the Settings sidebar no longer points at broken destinations
+- [x] Reworked `General` into compact `Runtime`, `Git`, and `Defaults` sheets with expandable advanced sections so it matches the approved Settings-General Pencil hierarchy more closely
+- [x] Reworked `Jira` into compact `Connection` and `Status` sheets with inline toggles and actions so it matches the approved Settings-Jira Pencil hierarchy more closely
+- [x] Brought `Appearance` and `Advanced` onto the same settings surface language so all settings routes share the same compact card, row, and header treatment
+- [x] Added shared responsive settings-sheet styles and corrected Settings header-title handling in the app chrome
+- [x] Re-validated `/settings/general`, `/settings/jira`, `/settings/sync`, `/settings/appearance`, and `/settings/advanced` in a live browser session with fresh screenshots
+- [x] Cleared the browser-only Jira DOM warnings by giving the token flow proper form semantics and autocomplete metadata
+
+### 2026-04-08 Remaining Pencil page pass
+
+- [x] Re-checked the remaining Pencil-backed app routes against the live app: `Widget Catalog`, `Page View with Widgets`, `Page Edit Mode`, and `Widget Editor — Create`
+- [x] Tightened `Widget Catalog` density, toolbar sizing, card proportions, and preview glyph styling so it reads closer to the approved compact catalog frame
+- [x] Tightened `Widget Editor` header hierarchy, left-panel width, preview framing, and control density so it reads closer to the approved create-widget frame
+- [x] Normalized the live `Team Velocity` demo page layout back to the intended `6/6` top row with `4/4/4` summary cards, matching the approved page-view and edit-mode composition more closely
+- [x] Added a backend normalization path for the seeded `Team Velocity` demo page so the known demo layout can be corrected when it drifts without affecting unrelated pages
+- [x] Removed the unsupported GridStack `resized` listener so page routes no longer emit the runtime console error during browser validation
+- [x] Re-validated the updated routes in a live browser session with fresh screenshots and clean console output

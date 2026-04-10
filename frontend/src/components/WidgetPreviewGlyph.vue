@@ -106,16 +106,15 @@ const isDistribution = computed(() => props.kind === 'distribution')
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   min-height: 100%;
-  padding: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 18px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.12), transparent 38%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 247, 255, 0.92));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 248, 255, 0.94));
   color: #0f172a;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
 .preview-glyph__footer {
@@ -123,14 +122,14 @@ const isDistribution = computed(() => props.kind === 'distribution')
   flex-direction: column;
   gap: 2px;
   color: #64748b;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
 
 .preview-glyph__footer span:first-child {
   color: #334155;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .preview-glyph__bars,
@@ -147,15 +146,14 @@ const isDistribution = computed(() => props.kind === 'distribution')
 }
 
 .preview-glyph__bars {
-  padding: 14px 10px 6px;
+  padding: 8px 6px 2px;
 }
 
 .preview-glyph__bar {
   flex: 1 1 0;
   min-width: 6px;
-  border-radius: 999px 999px 8px 8px;
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.35), rgba(99, 102, 241, 0.92));
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.15);
+  border-radius: 4px 4px 3px 3px;
+  background: linear-gradient(180deg, rgba(193, 197, 255, 0.9), rgba(132, 139, 242, 0.98));
 }
 
 .preview-glyph__metric {
@@ -168,28 +166,28 @@ const isDistribution = computed(() => props.kind === 'distribution')
 
 .preview-glyph__metric-value {
   color: #0f172a;
-  font-size: 34px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.04em;
 }
 
 .preview-glyph__metric-delta {
   color: #16a34a;
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 600;
 }
 
 .preview-glyph__metric-track {
   align-items: end;
-  gap: 6px;
-  padding-top: 12px;
+  gap: 5px;
+  padding-top: 8px;
 }
 
 .preview-glyph__metric-bar {
   flex: 1 1 0;
   min-width: 7px;
-  border-radius: 999px 999px 6px 6px;
-  background: linear-gradient(180deg, rgba(129, 140, 248, 0.24), rgba(99, 102, 241, 0.92));
+  border-radius: 4px 4px 3px 3px;
+  background: linear-gradient(180deg, rgba(193, 197, 255, 0.92), rgba(132, 139, 242, 0.98));
 }
 
 .preview-glyph__donut-shell {
@@ -201,8 +199,8 @@ const isDistribution = computed(() => props.kind === 'distribution')
 }
 
 .preview-glyph__donut {
-  width: 88px;
-  height: 88px;
+  width: 66px;
+  height: 66px;
   border-radius: 50%;
   background:
     conic-gradient(
@@ -212,7 +210,7 @@ const isDistribution = computed(() => props.kind === 'distribution')
       rgba(251, 191, 36, 0.88) 58% 78%,
       rgba(34, 197, 94, 0.88) 78% 100%
     );
-  box-shadow: inset 0 0 0 18px rgba(255, 255, 255, 0.86);
+  box-shadow: inset 0 0 0 14px rgba(255, 255, 255, 0.9);
 }
 
 .preview-glyph__legend {

@@ -289,6 +289,7 @@ export const useContributorsStore = defineStore('contributors', () => {
     metric,
     metricLabel,
     metricShortLabel,
+    summaryTotals,
     leaderboard,
     trend,
     loading,

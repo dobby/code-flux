@@ -1,6 +1,6 @@
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { BarChart, HeatmapChart, LineChart, PieChart, TreemapChart } from 'echarts/charts'
+import { BarChart, CustomChart, HeatmapChart, LineChart, PieChart, TreemapChart } from 'echarts/charts'
 import {
   CalendarComponent,
   DataZoomComponent,
@@ -16,6 +16,7 @@ import type { AnalyticsCompareResponse, AnalyticsQueryResponse, Annotation, Metr
 use([
   CanvasRenderer,
   BarChart,
+  CustomChart,
   HeatmapChart,
   LineChart,
   PieChart,

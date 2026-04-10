@@ -147,20 +147,20 @@ onMounted(() => {
 <style scoped>
 .widget-catalog {
   display: grid;
-  gap: 18px;
-  padding: 12px 4px 8px;
+  gap: 14px;
+  padding: 8px 0 8px;
 }
 
 .widget-catalog__header {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 20px;
+  gap: 16px;
 }
 
 .widget-catalog__heading {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .widget-catalog__eyebrow {
@@ -175,17 +175,17 @@ onMounted(() => {
 .widget-catalog__heading h1 {
   margin: 0;
   color: #0f172a;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.03em;
 }
 
 .widget-catalog__heading p {
   margin: 0;
-  max-width: 54ch;
+  max-width: 46ch;
   color: #64748b;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
 .widget-catalog__create {
@@ -196,24 +196,24 @@ onMounted(() => {
 .widget-catalog__toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 190px auto;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 14px 30px rgba(148, 163, 184, 0.08);
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 24px rgba(148, 163, 184, 0.06);
 }
 
 .widget-catalog__search {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  padding: 0 14px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 14px;
-  background: rgba(248, 250, 252, 0.92);
+  padding: 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.95);
   color: #64748b;
 }
 
@@ -229,27 +229,27 @@ onMounted(() => {
 }
 
 .widget-catalog__search input {
-  padding: 12px 0;
+  padding: 10px 0;
 }
 
 .widget-catalog__select {
-  padding: 12px 14px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 14px;
-  background: rgba(248, 250, 252, 0.92);
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.95);
 }
 
 .widget-catalog__stats {
   display: inline-flex;
-  gap: 10px;
+  gap: 8px;
   justify-self: end;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
 .widget-catalog__stats span {
-  padding: 8px 10px;
+  padding: 6px 9px;
   border-radius: 999px;
   background: rgba(99, 102, 241, 0.08);
   color: #4f46e5;
@@ -258,28 +258,27 @@ onMounted(() => {
 .widget-catalog__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .widget-card {
   display: grid;
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 22px;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 16px;
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.08), transparent 35%),
-    rgba(255, 255, 255, 0.95);
-  box-shadow: 0 18px 38px rgba(148, 163, 184, 0.1);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.96));
+  box-shadow: 0 10px 24px rgba(148, 163, 184, 0.08);
 }
 
 .widget-card__preview {
-  min-height: 150px;
+  min-height: 108px;
 }
 
 .widget-card__body {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .widget-card__meta {
@@ -294,10 +293,10 @@ onMounted(() => {
 .widget-card__tag {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -319,16 +318,16 @@ onMounted(() => {
 
 .widget-card strong {
   color: #0f172a;
-  font-size: 17px;
+  font-size: 13.5px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
 .widget-card p {
   margin: 0;
   color: #64748b;
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
 .widget-card__tags {
@@ -345,7 +344,14 @@ onMounted(() => {
 .widget-card__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
+}
+
+.widget-card__actions :deep(.button) {
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 10px;
 }
 
 .widget-catalog__empty {

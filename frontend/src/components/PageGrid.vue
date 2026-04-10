@@ -93,19 +93,6 @@ function initializeGrid() {
     previewWidths.value[id] = nextWidth
   })
 
-  grid.on('resized', (_event: unknown, items: unknown[] | undefined) => {
-    if (!items) {
-      return
-    }
-    for (const rawItem of items) {
-      const item = rawItem as { id?: unknown; w?: number | null } | undefined
-      if (!item?.id) {
-        continue
-      }
-      const id = String(item.id)
-      previewWidths.value[id] = Number(item.w ?? 0)
-    }
-  })
 }
 
 async function syncGrid() {

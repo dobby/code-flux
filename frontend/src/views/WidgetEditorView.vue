@@ -252,7 +252,7 @@ onMounted(async () => {
       </RouterLink>
 
       <div class="widget-editor__title">
-        <p class="widget-editor__eyebrow">Widget editor</p>
+        <p class="widget-editor__eyebrow">Catalog / Widget editor</p>
         <h1>{{ isEditing ? 'Edit widget' : 'Create widget' }}</h1>
         <p>{{ controlSummary }}</p>
       </div>
@@ -469,14 +469,14 @@ onMounted(async () => {
 <style scoped>
 .widget-editor {
   display: grid;
-  gap: 16px;
-  padding: 12px 4px 8px;
+  gap: 14px;
+  padding: 8px 0 8px;
 }
 
 .widget-editor__header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 18px;
+  gap: 14px;
   align-items: center;
 }
 
@@ -484,25 +484,25 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.88);
   color: #334155;
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .widget-editor__title {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .widget-editor__eyebrow {
   margin: 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -511,15 +511,15 @@ onMounted(async () => {
 .widget-editor__title h1 {
   margin: 0;
   color: #0f172a;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.03em;
 }
 
 .widget-editor__title p {
   margin: 0;
   color: #64748b;
-  font-size: 14px;
+  font-size: 12.5px;
 }
 
 .widget-editor__actions {
@@ -536,32 +536,34 @@ onMounted(async () => {
 
 .widget-editor__layout {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 258px minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
 }
 
 .widget-editor__panel {
   min-width: 0;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 18px 38px rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12px 28px rgba(148, 163, 184, 0.08);
 }
 
 .widget-editor__panel--form {
   display: grid;
-  gap: 18px;
-  padding: 16px;
+  gap: 14px;
+  padding: 14px;
   max-height: calc(100vh - 280px);
   overflow: auto;
 }
 
 .widget-editor__panel--preview {
   display: grid;
-  gap: 16px;
-  padding: 16px;
-  min-height: calc(100vh - 300px);
+  gap: 12px;
+  padding: 14px;
+  min-height: calc(100vh - 308px);
+  background:
+    linear-gradient(180deg, rgba(243, 246, 252, 0.82), rgba(238, 243, 251, 0.74));
 }
 
 .widget-editor__preview-header {
@@ -573,13 +575,13 @@ onMounted(async () => {
 
 .widget-editor__preview-header strong {
   color: #0f172a;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .widget-editor__loading {
   color: #6366f1;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -587,17 +589,16 @@ onMounted(async () => {
   flex: 1 1 auto;
   display: grid;
   place-items: center;
-  padding: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 20px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.08), transparent 30%),
-    linear-gradient(180deg, rgba(250, 251, 255, 0.92), rgba(243, 245, 255, 0.78));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.94));
 }
 
 .editor-section {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .editor-section__header {
@@ -608,7 +609,7 @@ onMounted(async () => {
 .editor-section__header p {
   margin: 0;
   color: #0f172a;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -617,7 +618,7 @@ onMounted(async () => {
 .editor-section__header span,
 .editor-section__note {
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -627,12 +628,12 @@ onMounted(async () => {
 
 .field {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .field span {
   color: #475569;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -651,26 +652,26 @@ onMounted(async () => {
 
 .field input,
 .field select {
-  min-height: 46px;
-  padding: 0 14px;
+  min-height: 40px;
+  padding: 0 12px;
 }
 
 .field textarea {
   min-height: 96px;
-  padding: 14px;
+  padding: 12px;
   resize: vertical;
 }
 
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .viz-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .viz-pill,
@@ -678,13 +679,13 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  padding: 0 12px;
+  min-height: 30px;
+  padding: 0 10px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.9);
   color: #475569;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -698,7 +699,7 @@ onMounted(async () => {
 .filter-chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .filter-chip--ghost {
@@ -707,13 +708,13 @@ onMounted(async () => {
 }
 
 .widget-editor__preview-stage :deep(.widget-renderer) {
-  width: min(100%, 620px);
+  width: min(100%, 520px);
 }
 
 .widget-editor__error {
   margin: 0;
   color: #dc2626;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 

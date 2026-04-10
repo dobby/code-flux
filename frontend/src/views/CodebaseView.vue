@@ -3,68 +3,26 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import type { EChartsOption } from 'echarts'
-import { Filter, GitBranch, Layers3, LineChart } from 'lucide-vue-next'
+import { Folder, TrendingUp } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard'
 import { useExplorerStore } from '../stores/explorer'
 import { useCodebaseStore, type CodebaseTreemapSizeMode } from '../stores/codebase'
-import { useTheme } from '../composables/useTheme'
-import { getSeriesColor } from '../lib/chart'
 import type { CodebaseBreakdownRow, CodebaseTreeNode } from '../types/workspace'
-import '../lib/chart'
 
 const props = defineProps<{
   repoId?: string
 }>()
-
-type TreemapDatum = {
-  id: string
-  name: string
-  value: number
-  path: string
-  kind: string
-  linesCount: number
-  filesCount: number
-  netLines: number
-  itemStyle?: Record<string, string | number>
-  children?: TreemapDatum[]
-}
-
-const TREEMAP_MODE_OPTIONS: Array<{
-  id: CodebaseTreemapSizeMode
-  label: string
-  note: string
-}> = [
-  {
-    id: 'loc',
-    label: 'LOC',
-    note: 'Tile area follows current line count in the visible tree.',
-  },
-  {
-    id: 'files',
-    label: 'Files',
-    note: 'Tile area follows current file count while keeping the same structure.',
-  },
-  {
-    id: 'net',
-    label: 'Net activity',
-    note: 'Tile area uses absolute net magnitude in the selected range; color shows gain vs loss.',
-  },
-]
-
-const ROOT_COLORS = ['#0f766e', '#2563eb', '#f97316', '#9333ea', '#0891b2', '#ca8a04']
 
 const route = useRoute()
 const router = useRouter()
 const dashboard = useDashboardStore()
 const explorer = useExplorerStore()
 const codebase = useCodebaseStore()
-const { isDark } = useTheme()
 
 const sizeMode = ref<CodebaseTreemapSizeMode>('loc')
 
 const enabledRepos = computed(() => (dashboard.bootstrap?.repos ?? []).filter((repo) => repo.enabled))
 const activeRepoId = computed(() => props.repoId ?? (typeof route.params.repoId === 'string' ? route.params.repoId : ''))
-const selectedRepo = computed(() => enabledRepos.value.find((repo) => repo.id === activeRepoId.value) ?? null)
 
 watch(
   () => [enabledRepos.value.map((repo) => repo.id).join(','), activeRepoId.value, route.name] as const,
@@ -101,28 +59,6 @@ watch(
   { immediate: true },
 )
 
-async function openDefaultRepo() {
-  const repo = enabledRepos.value[0]
-  if (!repo) {
-    return
-  }
-  await router.replace({ name: 'codebase-repo', params: { repoId: repo.id } })
-}
-
-function formatSignedNumber(value: number) {
-  const rounded = Math.round(value)
-  const prefix = rounded > 0 ? '+' : ''
-  return `${prefix}${rounded.toLocaleString('en-US')}`
-}
-
-function formatInteger(value: number) {
-  return Math.round(value).toLocaleString('en-US')
-}
-
-function shortSha(value: string | null | undefined) {
-  return value ? value.slice(0, 10) : 'Unavailable'
-}
-
 function modeValue(node: CodebaseTreeNode, mode: CodebaseTreemapSizeMode) {
   switch (mode) {
     case 'files':
@@ -135,423 +71,351 @@ function modeValue(node: CodebaseTreeNode, mode: CodebaseTreemapSizeMode) {
   }
 }
 
+function sampleEvenly<T>(items: T[], count: number) {
+  if (items.length <= count) {
+    return items
+  }
+
+  return Array.from({ length: count }, (_, index) => {
+    const itemIndex = Math.round((index / Math.max(count - 1, 1)) * (items.length - 1))
+    return items[itemIndex]
+  })
+}
+
+function normalizeSeries(values: number[], count: number) {
+  if (!values.length) {
+    return Array.from({ length: count }, () => 0)
+  }
+
+  if (values.length >= count) {
+    return sampleEvenly(values, count)
+  }
+
+  return Array.from({ length: count }, (_, index) => values[Math.min(index, values.length - 1)] ?? 0)
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function formatInteger(value: number) {
+  return Math.round(value).toLocaleString('en-US')
+}
+
+function shareLabel(row: CodebaseBreakdownRow, total: number) {
+  if (total <= 0) {
+    return `${row.label} 0%`
+  }
+  return `${row.label} ${Math.round((row.linesCount / total) * 100)}%`
+}
+
 function netColor(netLines: number) {
   if (netLines > 0) {
-    return '#0f766e'
+    return '#0f9f86'
   }
   if (netLines < 0) {
-    return '#c2410c'
+    return '#d97706'
   }
   return '#94a3b8'
 }
 
-function buildTreemapDatum(node: CodebaseTreeNode, mode: CodebaseTreemapSizeMode, depth: number, colorIndex: number): TreemapDatum {
-  const children = node.children.map((child, childIndex) => buildTreemapDatum(child, mode, depth + 1, depth === 0 ? childIndex : colorIndex))
-  const datum: TreemapDatum = {
-    id: node.key,
-    name: node.label,
-    value: modeValue(node, mode),
-    path: node.path || '/',
-    kind: node.kind,
-    linesCount: node.linesCount,
-    filesCount: node.filesCount,
-    netLines: node.netLines,
-    children: children.length ? children : undefined,
-  }
+const growthBars = computed(() => {
+  const actualValues = normalizeSeries(
+    codebase.growthPoints
+      .map((point) => point.snapshotLines)
+      .filter((value): value is number => value !== null),
+    5,
+  )
+  const cumulativeValues = normalizeSeries(
+    codebase.growthPoints.map((point) => point.cumulativeNetLines),
+    5,
+  )
 
-  if (mode === 'net') {
-    datum.itemStyle = {
-      color: netColor(node.netLines),
-      borderColor: isDark.value ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.82)',
-    }
-  } else if (depth === 0) {
-    datum.itemStyle = {
-      color: ROOT_COLORS[colorIndex % ROOT_COLORS.length],
-    }
-  }
+  const actualMax = Math.max(...actualValues, 1)
+  const cumulativeMin = Math.min(...cumulativeValues, 0)
+  const cumulativeShifted = cumulativeValues.map((value) => value - cumulativeMin)
+  const cumulativeMax = Math.max(...cumulativeShifted, 1)
 
-  return datum
-}
-
-const activeFilterLabels = computed(() => {
-  const labels: string[] = []
-
-  if (explorer.selectedAuthorIds.length) {
-    labels.push(explorer.selectedAuthorIds.length === 1
-      ? `Author: ${dashboard.bootstrap?.authors.find((author) => author.id === explorer.selectedAuthorIds[0])?.displayName ?? explorer.selectedAuthorIds[0]}`
-      : `Authors: ${explorer.selectedAuthorIds.length}`)
+  return {
+    actual: actualValues.map((value) => ({
+      value,
+      height: `${Math.max(22, Math.round((value / actualMax) * 100))}%`,
+    })),
+    cumulative: cumulativeShifted.map((value, index) => ({
+      value: cumulativeValues[index] ?? 0,
+      height: `${Math.max(22, Math.round((value / cumulativeMax) * 100))}%`,
+    })),
   }
-  if (explorer.selectedLanguages.length) {
-    labels.push(explorer.selectedLanguages.length === 1
-      ? `Language: ${explorer.selectedLanguages[0]}`
-      : `Languages: ${explorer.selectedLanguages.length}`)
-  }
-  if (explorer.selectedCategories.length) {
-    labels.push(explorer.selectedCategories.length === 1
-      ? `Category: ${explorer.selectedCategories[0]}`
-      : `Categories: ${explorer.selectedCategories.length}`)
-  }
-  if (explorer.selectedProductCodes.length) {
-    labels.push(explorer.selectedProductCodes.length === 1
-      ? `Product: ${explorer.selectedProductCodes[0]}`
-      : `Products: ${explorer.selectedProductCodes.length}`)
-  }
-
-  return labels
 })
 
-const snapshotPointCount = computed(() =>
-  codebase.growthPoints.reduce((count, point) => count + (point.snapshotLines === null ? 0 : 1), 0),
-)
+const structureNodes = computed(() => [...(codebase.treemap?.children ?? [])]
+  .filter((node) => modeValue(node, sizeMode.value) > 0)
+  .sort((left, right) => modeValue(right, sizeMode.value) - modeValue(left, sizeMode.value))
+  .slice(0, 4))
 
-const growthChartOption = computed<EChartsOption | null>(() => {
-  if (!codebase.growthPoints.length) {
-    return null
+const structureLayout = computed(() => {
+  const [primary, secondary, tertiary, quaternary] = structureNodes.value
+  const total = structureNodes.value.reduce((sum, node) => sum + modeValue(node, sizeMode.value), 0)
+
+  const leftShare = primary ? clamp(modeValue(primary, sizeMode.value) / Math.max(total, 1), 0.42, 0.62) : 0.5
+  const rightTotal = (secondary ? modeValue(secondary, sizeMode.value) : 0)
+    + (tertiary ? modeValue(tertiary, sizeMode.value) : 0)
+    + (quaternary ? modeValue(quaternary, sizeMode.value) : 0)
+  const topShare = secondary ? clamp(modeValue(secondary, sizeMode.value) / Math.max(rightTotal, 1), 0.45, 0.7) : 0.6
+  const bottomLeftShare = tertiary && quaternary
+    ? clamp(
+        modeValue(tertiary, sizeMode.value)
+          / Math.max(modeValue(tertiary, sizeMode.value) + modeValue(quaternary, sizeMode.value), 1),
+        0.35,
+        0.65,
+      )
+    : 0.5
+
+  return {
+    primary,
+    secondary,
+    tertiary,
+    quaternary,
+    leftShare,
+    topShare,
+    bottomLeftShare,
+  }
+})
+
+const languageLines = computed(() => {
+  const total = codebase.summary?.visibleLines ?? 0
+  return codebase.languageBreakdown.slice(0, 3).map((row) => shareLabel(row, total))
+})
+
+const categoryLines = computed(() => {
+  const total = codebase.summary?.visibleLines ?? 0
+  return codebase.categoryBreakdown.slice(0, 3).map((row) => shareLabel(row, total))
+})
+
+const snapshotLines = computed(() => {
+  const summary = codebase.summary
+  return [
+    `Last snapshot: ${summary?.lastSnapshotDate ?? 'Unavailable'}`,
+    `Total files: ${formatInteger(summary?.repoFiles ?? 0)}`,
+    `Total LOC: ${formatInteger(summary?.repoLines ?? 0)}`,
+  ]
+})
+
+const summaryCards = computed(() => [
+  {
+    key: 'languages',
+    title: 'Languages',
+    lines: languageLines.value.length ? languageLines.value : ['No language data'],
+  },
+  {
+    key: 'categories',
+    title: 'Categories',
+    lines: categoryLines.value.length ? categoryLines.value : ['No category data'],
+  },
+  {
+    key: 'snapshot',
+    title: 'Snapshot',
+    lines: snapshotLines.value,
+  },
+])
+
+const modeOptions: Array<{ id: CodebaseTreemapSizeMode; label: string }> = [
+  { id: 'loc', label: 'LOC' },
+  { id: 'files', label: 'Files' },
+  { id: 'net', label: 'Net activity' },
+]
+
+function structureFill(node: CodebaseTreeNode | undefined, index: number) {
+  if (!node) {
+    return '#e2e8f0'
+  }
+  if (sizeMode.value === 'net') {
+    return netColor(node.netLines)
   }
 
-  const showSnapshotSymbols = snapshotPointCount.value > 0 && snapshotPointCount.value <= 8
+  return ['#3759c9', '#0f9f86', '#d97706', '#94a3b8'][index] ?? '#3759c9'
+}
+
+const growthChartOption = computed<EChartsOption>(() => {
+  const actualValues = growthBars.value.actual.map((entry) => entry.value)
+  const cumulativeValuesRaw = codebase.growthPoints.map((point) => point.cumulativeNetLines)
+  const cumulativeValues = normalizeSeries(
+    cumulativeValuesRaw.map((value) => value - Math.min(...cumulativeValuesRaw, 0)),
+    5,
+  )
+  const categories = ['a1', 'a2', 'a3', 'a4', 'a5', 'gap', 'n1', 'n2', 'n3', 'n4', 'n5']
+  const palette = ['#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', 'transparent', '#a7f3d0', '#6ee7b7', '#34d399', '#10b981', '#059669']
+  const values = [...actualValues, 0, ...cumulativeValues]
+  const maxValue = Math.max(...values, 1)
 
   return {
     backgroundColor: 'transparent',
-    color: [getSeriesColor(0), getSeriesColor(1)],
-    animationDuration: 260,
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'line' },
-      formatter: (params: unknown) => {
-        const rows = (Array.isArray(params) ? params : []).filter(Boolean) as Array<{
-          axisValueLabel?: string
-          color?: string
-          seriesName?: string
-          value?: number | string | Array<number | string>
-        }>
-        if (!rows.length) {
-          return ''
-        }
-
-        return [
-          rows[0]?.axisValueLabel ?? '',
-          ...rows.map((row) => {
-            const raw = Array.isArray(row.value) ? row.value.at(-1) : row.value
-            const numeric = Number(raw ?? 0)
-            return `<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${typeof row.color === 'string' ? row.color : '#6366f1'};margin-right:6px;"></span>${row.seriesName}: ${Math.round(Number.isFinite(numeric) ? numeric : 0).toLocaleString('en-US')}`
-          }),
-        ].join('<br/>')
-      },
-    },
-    legend: {
-      bottom: 0,
-      icon: 'circle',
-      itemWidth: 10,
-      itemHeight: 10,
-      textStyle: {
-        color: isDark.value ? '#a7b2cd' : '#61708d',
-        fontSize: 11,
-      },
-    },
+    animationDuration: 250,
     grid: {
-      left: 6,
-      right: 10,
-      top: 10,
-      bottom: 42,
-      containLabel: true,
+      left: 0,
+      right: '74%',
+      top: 0,
+      bottom: 0,
+      containLabel: false,
     },
+    tooltip: { show: false },
     xAxis: {
       type: 'category',
-      data: codebase.growthPoints.map((point) => point.day),
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { show: false },
+      data: categories,
+      show: false,
     },
     yAxis: {
       type: 'value',
-      minInterval: 1,
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: {
-        color: isDark.value ? '#8e9abb' : '#7b8aa5',
-        fontSize: 11,
-      },
-      splitLine: {
-        lineStyle: {
-          color: isDark.value ? 'rgba(120, 136, 168, 0.18)' : 'rgba(148, 163, 184, 0.15)',
-        },
-      },
+      show: false,
+      max: Math.max(4, Math.round(maxValue * 1.14)),
     },
     series: [
       {
-        name: 'Actual LOC',
-        type: 'line',
-        smooth: true,
-        showSymbol: showSnapshotSymbols,
-        symbol: 'circle',
-        symbolSize: snapshotPointCount.value === 1 ? 10 : 7,
-        lineStyle: { width: 2.6, color: getSeriesColor(0) },
-        areaStyle: { opacity: 0.08, color: getSeriesColor(0) },
-        data: codebase.growthPoints.map((point) => point.snapshotLines),
-      },
-      {
-        name: 'Cumulative Net Activity',
-        type: 'line',
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 2.2, type: 'dashed', color: getSeriesColor(1) },
-        data: codebase.growthPoints.map((point) => point.cumulativeNetLines),
-      },
-    ],
-  }
-})
-
-const summaryCards = computed(() => {
-  const summary = codebase.summary
-  return [
-    {
-      label: 'Latest LOC snapshot',
-      value: codebase.latestSnapshotLines.toLocaleString('en-US'),
-      note: codebase.snapshotCoverageDays > 0
-        ? `${codebase.snapshotCoverageDays} snapshot points in range`
-        : 'Run snapshots to populate LOC history',
-    },
-    {
-      label: 'Visible structure',
-      value: summary ? `${formatInteger(summary.visibleLines)} LOC` : '0 LOC',
-      note: summary
-        ? `${formatInteger(summary.visibleFiles)} files${summary.visibleFiles !== summary.repoFiles ? ` of ${formatInteger(summary.repoFiles)}` : ''}`
-        : 'Waiting for current inventory',
-    },
-    {
-      label: 'Cumulative net activity',
-      value: formatSignedNumber(codebase.selectedRangeNet),
-      note: summary
-        ? `${formatInteger(summary.activeFilesInRange)} active files in range`
-        : 'Respects Codebase header filters',
-    },
-    {
-      label: 'Header scope',
-      value: explorer.timeLabel,
-      note: activeFilterLabels.value.length
-        ? activeFilterLabels.value.join(' · ')
-        : 'No extra filters applied',
-    },
-  ]
-})
-
-const activeMode = computed(() => TREEMAP_MODE_OPTIONS.find((option) => option.id === sizeMode.value) ?? TREEMAP_MODE_OPTIONS[0])
-
-const treemapState = computed(() => {
-  if (codebase.loading) {
-    return 'loading'
-  }
-  if (!codebase.summary) {
-    return 'loading'
-  }
-  if (codebase.summary.repoFiles === 0) {
-    return 'no-structure'
-  }
-  if (codebase.summary.visibleFiles === 0) {
-    return 'filtered-empty'
-  }
-  if (sizeMode.value === 'net' && codebase.summary.activeFilesInRange === 0) {
-    return 'no-activity'
-  }
-  return 'ready'
-})
-
-const treemapOption = computed<EChartsOption | null>(() => {
-  if (treemapState.value !== 'ready' || !codebase.treemap) {
-    return null
-  }
-
-  const data = codebase.treemap.children.map((node, index) => buildTreemapDatum(node, sizeMode.value, 0, index))
-
-  return {
-    backgroundColor: 'transparent',
-    tooltip: {
-      formatter: (params: unknown) => {
-        const dataPoint = ((params as { data?: TreemapDatum | null } | null)?.data ?? null)
-        if (!dataPoint) {
-          return ''
-        }
-        return [
-          `<strong>${dataPoint.name}</strong>`,
-          dataPoint.path === '/' ? 'Path: /' : `Path: ${dataPoint.path}`,
-          `LOC: ${formatInteger(dataPoint.linesCount)}`,
-          `Files: ${formatInteger(dataPoint.filesCount)}`,
-          `Range net: ${formatSignedNumber(dataPoint.netLines)}`,
-        ].join('<br/>')
-      },
-    },
-    series: [
-      {
-        type: 'treemap',
-        roam: false,
-        nodeClick: 'zoomToNode',
-        breadcrumb: {
-          show: true,
-          height: 28,
-          emptyItemWidth: 20,
+        type: 'bar',
+        silent: true,
+        barWidth: 16,
+        barMaxWidth: 16,
+        barMinHeight: 8,
+        barCategoryGap: '18%',
+        data: values.map((value, index) => ({
+          value,
           itemStyle: {
-            color: isDark.value ? 'rgba(15, 23, 42, 0.74)' : 'rgba(255, 255, 255, 0.88)',
-            borderColor: isDark.value ? 'rgba(120, 136, 168, 0.28)' : 'rgba(148, 163, 184, 0.25)',
+            color: palette[index] ?? '#4f46e5',
+            borderRadius: value > 0 ? [6, 6, 0, 0] : 0,
           },
-          textStyle: {
-            color: isDark.value ? '#d7deef' : '#334155',
-          },
-        },
-        label: {
-          show: true,
-          color: isDark.value ? '#f8fafc' : '#0f172a',
-          formatter: '{b}',
-          overflow: 'truncate',
-        },
-        upperLabel: {
-          show: true,
-          height: 22,
-          color: isDark.value ? '#e2e8f0' : '#0f172a',
-        },
-        itemStyle: {
-          borderColor: isDark.value ? 'rgba(15, 23, 42, 0.84)' : 'rgba(255, 255, 255, 0.82)',
-          borderWidth: 1,
-          gapWidth: 3,
-        },
-        levels: [
-          {
-            itemStyle: {
-              borderColorSaturation: 0.65,
-              gapWidth: 4,
-              borderWidth: 1,
-            },
-          },
-          {
-            colorSaturation: [0.28, 0.56],
-            itemStyle: {
-              gapWidth: 2,
-            },
-          },
-          {
-            colorSaturation: [0.18, 0.42],
-            itemStyle: {
-              gapWidth: 1,
-            },
-          },
-        ],
-        data,
+        })),
       },
     ],
   }
 })
 
-const snapshotFacts = computed(() => {
-  const summary = codebase.summary
-  if (!summary) {
-    return []
-  }
-  return [
+const structureChartOption = computed<EChartsOption>(() => ({
+  backgroundColor: 'transparent',
+  animationDuration: 250,
+  tooltip: { show: false },
+  series: [
     {
-      label: 'Last snapshot',
-      value: summary.lastSnapshotDate ?? 'Not built yet',
-    },
-    {
-      label: 'Current ref',
-      value: summary.refName ?? 'Unavailable',
-    },
-    {
-      label: 'Current commit',
-      value: shortSha(summary.commitSha),
-    },
-    {
-      label: 'Repo baseline',
-      value: `${formatInteger(summary.repoLines)} LOC across ${formatInteger(summary.repoFiles)} files`,
-    },
-    {
-      label: 'Visible slice',
-      value: `${formatInteger(summary.visibleLines)} LOC across ${formatInteger(summary.visibleFiles)} files`,
-    },
-    {
-      label: 'Range net',
-      value: `${formatSignedNumber(summary.netLinesInRange)} across ${formatInteger(summary.activeFilesInRange)} active files`,
-    },
-  ]
-})
+      type: 'custom',
+      coordinateSystem: 'none',
+      silent: true,
+      data: [0],
+      renderItem: ((_params: unknown, api: { getWidth: () => number; getHeight: () => number }) => {
+        const width = api.getWidth()
+        const height = api.getHeight()
+        const gap = 10
+        const padding = 2
+        const radius = 10
+        const innerWidth = Math.max(width - padding * 2, 0)
+        const innerHeight = Math.max(height - padding * 2, 0)
+        const rightWidth = Math.max(innerWidth - innerWidth * structureLayout.value.leftShare - gap, 0)
+        const leftWidth = Math.max(innerWidth - rightWidth - gap, 0)
+        const topHeight = Math.max(innerHeight * structureLayout.value.topShare - gap / 2, 0)
+        const bottomHeight = Math.max(innerHeight - topHeight - gap, 0)
+        const bottomLeftWidth = Math.max(rightWidth * structureLayout.value.bottomLeftShare - gap / 2, 0)
+        const bottomRightWidth = Math.max(rightWidth - bottomLeftWidth - gap, 0)
 
-function breakdownDescription(row: CodebaseBreakdownRow) {
-  return `${formatInteger(row.linesCount)} LOC · ${formatInteger(row.filesCount)} files · ${formatSignedNumber(row.netLines)} net`
-}
+        const children: Array<Record<string, unknown>> = []
+
+        const addTile = (
+          node: CodebaseTreeNode | undefined,
+          index: number,
+          x: number,
+          y: number,
+          tileWidth: number,
+          tileHeight: number,
+        ) => {
+          if (!node || tileWidth <= 0 || tileHeight <= 0) {
+            return
+          }
+
+          children.push({
+            type: 'rect',
+            shape: {
+              x,
+              y,
+              width: tileWidth,
+              height: tileHeight,
+              r: radius,
+            },
+            style: {
+              fill: structureFill(node, index),
+              stroke: '#ffffff',
+              lineWidth: 6,
+            },
+          })
+          children.push({
+            type: 'text',
+            style: {
+              x: x + 14,
+              y: y + 20,
+              text: node.label,
+              fill: '#ffffff',
+              fontSize: 12,
+              fontWeight: 600,
+              width: Math.max(tileWidth - 28, 0),
+              overflow: 'truncate',
+            },
+          })
+        }
+
+        addTile(structureLayout.value.primary, 0, padding, padding, leftWidth, innerHeight)
+        addTile(structureLayout.value.secondary, 1, padding + leftWidth + gap, padding, rightWidth, topHeight)
+        addTile(structureLayout.value.tertiary, 2, padding + leftWidth + gap, padding + topHeight + gap, bottomLeftWidth, bottomHeight)
+        addTile(structureLayout.value.quaternary, 3, padding + leftWidth + gap + bottomLeftWidth + gap, padding + topHeight + gap, bottomRightWidth, bottomHeight)
+
+        return {
+          type: 'group',
+          children,
+        }
+      }) as never,
+    },
+  ],
+}))
 </script>
 
 <template>
-  <section class="workspace-surface codebase-view" data-testid="codebase-view">
-    <div v-if="!enabledRepos.length" class="workspace-empty-state" data-testid="codebase-empty-no-repos">
-      <strong>No enabled repositories are available for Codebase.</strong>
-      <p>Enable at least one repository in settings before wiring repo-specific Codebase pages.</p>
+  <section class="codebase-view" data-testid="codebase-view">
+    <div v-if="codebase.error" class="codebase-feedback codebase-feedback--error" data-testid="codebase-growth-error">
+      <strong>Codebase data could not load.</strong>
+      <p>{{ codebase.error }}</p>
     </div>
 
-    <div
-      v-else-if="activeRepoId && !selectedRepo"
-      class="workspace-empty-state"
-      data-testid="codebase-invalid-repo"
-    >
-      <strong>This repository is not available in the current Codebase scope.</strong>
-      <p>The requested repo was not found among enabled repositories.</p>
-      <button class="codebase-empty-action" type="button" @click="openDefaultRepo()">
-        Open first enabled repository
-      </button>
-    </div>
-
-    <div v-else-if="selectedRepo" class="codebase-shell" data-testid="codebase-shell">
-      <div class="codebase-growth-card">
-        <div class="codebase-growth-card__header">
-          <div>
-            <span class="codebase-eyebrow">Growth context</span>
-            <h2>{{ selectedRepo.displayName }}</h2>
-            <p>
-              Actual LOC comes from repository snapshots. Cumulative net activity comes from authored throughput facts
-              for the same date window.
-            </p>
+    <div v-else class="codebase-layout">
+      <article class="codebase-card codebase-card--growth">
+        <div class="codebase-card__header">
+          <div class="codebase-card__title">
+            <TrendingUp :size="16" />
+            <span>Growth Overview</span>
           </div>
-          <div class="codebase-growth-card__repo-meta">
-            <span>Repository</span>
-            <strong>{{ selectedRepo.id }}</strong>
+          <div class="codebase-card__legend">
+            <div class="codebase-card__legend-pill codebase-card__legend-pill--actual">
+              <span class="codebase-card__legend-dot" />
+              <span>Actual LOC</span>
+            </div>
+            <div class="codebase-card__legend-pill codebase-card__legend-pill--net">
+              <span class="codebase-card__legend-dot" />
+              <span>Cumulative net</span>
+            </div>
           </div>
         </div>
 
-        <div v-if="codebase.error" class="codebase-feedback codebase-feedback--error" data-testid="codebase-growth-error">
-          <strong>Codebase growth data could not load.</strong>
-          <p>{{ codebase.error }}</p>
-        </div>
+        <VChart
+          class="codebase-growth-chart"
+          data-testid="codebase-growth-chart"
+          :autoresize="true"
+          :option="growthChartOption"
+        />
+      </article>
 
-        <div
-          v-else-if="!growthChartOption && !codebase.loading"
-          class="codebase-feedback"
-          data-testid="codebase-growth-empty"
-        >
-          <strong>No growth data is available for this repository and range yet.</strong>
-          <p>Run sync and snapshots, or widen the date range.</p>
-        </div>
-
-        <div v-else class="codebase-growth-card__chart" data-testid="codebase-growth-chart">
-          <VChart v-if="growthChartOption" :autoresize="true" :option="growthChartOption" />
-        </div>
-      </div>
-
-      <div class="codebase-summary-row" data-testid="codebase-summary-row">
-        <article v-for="card in summaryCards" :key="card.label" class="codebase-summary-card">
-          <span>{{ card.label }}</span>
-          <strong>{{ card.value }}</strong>
-          <small>{{ card.note }}</small>
-        </article>
-      </div>
-
-      <section class="codebase-treemap-card">
-        <div class="codebase-treemap-card__header">
-          <div>
-            <span class="codebase-eyebrow">Current structure</span>
-            <h3>Treemap</h3>
-            <p>{{ activeMode.note }}</p>
+      <article class="codebase-card codebase-card--structure" data-testid="codebase-treemap">
+        <div class="codebase-card__header">
+          <div class="codebase-card__title">
+            <Folder :size="16" />
+            <span>Current Structure</span>
           </div>
           <div class="codebase-mode-switcher" data-testid="codebase-size-mode-switcher">
             <button
-              v-for="option in TREEMAP_MODE_OPTIONS"
+              v-for="option in modeOptions"
               :key="option.id"
               class="codebase-mode-switcher__button"
               :class="{ 'codebase-mode-switcher__button--active': sizeMode === option.id }"
@@ -564,113 +428,32 @@ function breakdownDescription(row: CodebaseBreakdownRow) {
           </div>
         </div>
 
-        <div
-          v-if="treemapState === 'no-structure'"
-          class="codebase-feedback"
-          data-testid="codebase-treemap-empty-no-structure"
-        >
+        <div v-if="!structureNodes.length" class="codebase-feedback" data-testid="codebase-treemap-empty-no-structure">
           <strong>No current inventory is available for this repository yet.</strong>
-          <p>Build current snapshots to populate the tree and structural breakdowns.</p>
+          <p>Build snapshots to populate the structure view.</p>
         </div>
 
-        <div
-          v-else-if="treemapState === 'filtered-empty'"
-          class="codebase-feedback"
-          data-testid="codebase-treemap-empty-filtered"
+        <VChart
+          v-else
+          class="codebase-structure-chart"
+          data-testid="codebase-treemap"
+          :autoresize="true"
+          :option="structureChartOption"
+        />
+      </article>
+
+      <div class="codebase-summary-row" data-testid="codebase-summary-row">
+        <article
+          v-for="card in summaryCards"
+          :key="card.key"
+          class="codebase-summary-card"
+          :data-testid="card.key === 'languages' ? 'codebase-breakdown-languages' : card.key === 'categories' ? 'codebase-breakdown-categories' : 'codebase-snapshot-summary'"
         >
-          <strong>No current files match the structural filters.</strong>
-          <p>Try clearing language, category, or product filters to widen the tree.</p>
-        </div>
-
-        <div
-          v-else-if="treemapState === 'no-activity'"
-          class="codebase-feedback"
-          data-testid="codebase-treemap-empty-no-activity"
-        >
-          <strong>No file activity landed in the selected range.</strong>
-          <p>The current tree is still available, but the Net activity size mode has nothing to size against yet.</p>
-        </div>
-
-        <div v-else class="codebase-treemap-card__chart" data-testid="codebase-treemap">
-          <VChart v-if="treemapOption" :autoresize="true" :option="treemapOption" />
-        </div>
-      </section>
-
-      <div class="codebase-breakdowns-grid">
-        <section class="codebase-shell__panel">
-          <div class="codebase-shell__panel-header">
-            <Filter :size="16" />
-            <strong>Filter semantics</strong>
+          <span class="codebase-summary-card__title">{{ card.title }}</span>
+          <div class="codebase-summary-card__lines">
+            <span v-for="line in card.lines" :key="line">{{ line }}</span>
           </div>
-          <ul class="codebase-shell__list" data-testid="codebase-filter-semantics">
-            <li v-for="entry in codebase.filterSemantics" :key="entry">{{ entry }}</li>
-          </ul>
-          <div class="codebase-filter-tags">
-            <span v-if="activeFilterLabels.length" v-for="label in activeFilterLabels" :key="label">{{ label }}</span>
-            <span v-else>No extra filters applied</span>
-          </div>
-        </section>
-
-        <section class="codebase-shell__panel" data-testid="codebase-breakdown-languages">
-          <div class="codebase-shell__panel-header">
-            <Layers3 :size="16" />
-            <strong>Languages</strong>
-          </div>
-          <div v-if="codebase.languageBreakdown.length" class="codebase-breakdown-list">
-            <article v-for="row in codebase.languageBreakdown" :key="row.key" class="codebase-breakdown-row">
-              <div>
-                <strong>{{ row.label }}</strong>
-                <small>{{ breakdownDescription(row) }}</small>
-              </div>
-            </article>
-          </div>
-          <p v-else>No language data in the current structural slice.</p>
-        </section>
-
-        <section class="codebase-shell__panel" data-testid="codebase-breakdown-categories">
-          <div class="codebase-shell__panel-header">
-            <GitBranch :size="16" />
-            <strong>Categories</strong>
-          </div>
-          <div v-if="codebase.categoryBreakdown.length" class="codebase-breakdown-list">
-            <article v-for="row in codebase.categoryBreakdown" :key="row.key" class="codebase-breakdown-row">
-              <div>
-                <strong>{{ row.label }}</strong>
-                <small>{{ breakdownDescription(row) }}</small>
-              </div>
-            </article>
-          </div>
-          <p v-else>No category data in the current structural slice.</p>
-        </section>
-
-        <section class="codebase-shell__panel" data-testid="codebase-breakdown-top-directories">
-          <div class="codebase-shell__panel-header">
-            <LineChart :size="16" />
-            <strong>Top directories</strong>
-          </div>
-          <div v-if="codebase.topDirectoryBreakdown.length" class="codebase-breakdown-list">
-            <article v-for="row in codebase.topDirectoryBreakdown" :key="row.key" class="codebase-breakdown-row">
-              <div>
-                <strong>{{ row.label }}</strong>
-                <small>{{ breakdownDescription(row) }}</small>
-              </div>
-            </article>
-          </div>
-          <p v-else>No directory summary is available for this slice.</p>
-        </section>
-
-        <section class="codebase-shell__panel" data-testid="codebase-snapshot-summary">
-          <div class="codebase-shell__panel-header">
-            <GitBranch :size="16" />
-            <strong>Snapshot summary</strong>
-          </div>
-          <div class="codebase-facts-grid">
-            <article v-for="fact in snapshotFacts" :key="fact.label" class="codebase-fact">
-              <span>{{ fact.label }}</span>
-              <strong>{{ fact.value }}</strong>
-            </article>
-          </div>
-        </section>
+        </article>
       </div>
     </div>
   </section>
@@ -678,257 +461,203 @@ function breakdownDescription(row: CodebaseBreakdownRow) {
 
 <style scoped>
 .codebase-view {
-  padding: 74px 20px 20px;
-}
-
-.codebase-shell {
-  display: grid;
-  gap: 16px;
   min-height: 100%;
+  padding: 24px;
 }
 
-.codebase-growth-card,
+.codebase-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.codebase-card,
 .codebase-summary-card,
-.codebase-shell__panel,
-.codebase-treemap-card {
-  border: 1px solid var(--cf-border);
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cf-surface) 94%, white), var(--cf-surface));
-  box-shadow: var(--cf-shadow);
+.codebase-feedback {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.08);
 }
 
-.codebase-growth-card,
-.codebase-treemap-card {
-  padding: 20px;
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--cf-accent) 12%, transparent), transparent 42%),
-    linear-gradient(180deg, color-mix(in srgb, var(--cf-surface) 94%, white), var(--cf-surface));
+.codebase-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
 }
 
-.codebase-growth-card__header,
-.codebase-treemap-card__header {
+.codebase-card--growth {
+  min-height: 178px;
+}
+
+.codebase-card--structure {
+  min-height: 248px;
+}
+
+.codebase-card__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 8px;
 }
 
-.codebase-eyebrow {
+.codebase-card__title {
   display: inline-flex;
   align-items: center;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--cf-text-tertiary);
-}
-
-.codebase-growth-card__header h2,
-.codebase-treemap-card__header h3 {
-  margin: 8px 0 8px;
-  line-height: 1.08;
-}
-
-.codebase-growth-card__header h2 {
-  font-size: 1.45rem;
-}
-
-.codebase-treemap-card__header h3 {
-  font-size: 1.3rem;
-}
-
-.codebase-growth-card__header p,
-.codebase-growth-card__repo-meta span,
-.codebase-growth-card__repo-meta strong,
-.codebase-feedback p,
-.codebase-summary-card small,
-.codebase-shell__panel p,
-.codebase-shell__list,
-.codebase-treemap-card__header p,
-.codebase-breakdown-row small,
-.codebase-fact span {
-  color: var(--cf-text-secondary);
-}
-
-.codebase-growth-card__repo-meta {
-  display: grid;
-  gap: 6px;
-  min-width: 190px;
-  padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--cf-border) 78%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--cf-surface) 92%, transparent);
-}
-
-.codebase-growth-card__repo-meta span,
-.codebase-summary-card span,
-.codebase-fact span {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.codebase-growth-card__chart {
-  height: 320px;
-}
-
-.codebase-feedback {
-  display: grid;
   gap: 8px;
-  padding: 18px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--cf-accent-subtle) 48%, transparent);
+  min-width: 0;
+  color: #61708d;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.codebase-feedback--error {
-  border: 1px solid color-mix(in srgb, var(--cf-danger) 28%, var(--cf-border));
+.codebase-card__title :deep(svg) {
+  color: #6366f1;
+}
+
+.codebase-card__legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.codebase-card__legend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.codebase-card__legend-pill--actual {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.codebase-card__legend-pill--net {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.codebase-card__legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.codebase-growth-chart {
+  height: 104px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.codebase-mode-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.codebase-mode-switcher__button {
+  min-height: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #61708d;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.codebase-mode-switcher__button--active {
+  border-color: rgba(99, 102, 241, 0.16);
+  background: #eef2ff;
+  color: #4338ca;
+  font-weight: 600;
+}
+
+.codebase-structure-chart {
+  height: 194px;
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
 .codebase-summary-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
 .codebase-summary-card {
   display: grid;
-  gap: 8px;
-  padding: 18px;
+  gap: 6px;
+  min-height: 110px;
+  padding: 14px 16px;
 }
 
-.codebase-summary-card strong,
-.codebase-fact strong {
-  font-size: 1.2rem;
-}
-
-.codebase-treemap-card__chart {
-  height: 540px;
-}
-
-.codebase-mode-switcher {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.codebase-mode-switcher__button,
-.codebase-empty-action {
-  padding: 10px 14px;
-  border: 1px solid var(--cf-border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--cf-text);
-  cursor: pointer;
-}
-
-.codebase-mode-switcher__button--active {
-  border-color: color-mix(in srgb, var(--cf-accent) 60%, var(--cf-border));
-  background: color-mix(in srgb, var(--cf-accent-subtle) 80%, transparent);
-  color: color-mix(in srgb, var(--cf-accent) 82%, black);
-}
-
-.codebase-breakdowns-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.codebase-shell__panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 20px;
-}
-
-.codebase-shell__panel-header {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.codebase-shell__list {
-  margin: 0;
-  padding-left: 18px;
-  line-height: 1.55;
-}
-
-.codebase-shell__list li + li {
-  margin-top: 8px;
-}
-
-.codebase-filter-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.codebase-filter-tags span {
-  padding: 8px 10px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--cf-accent-subtle) 72%, transparent);
-  color: var(--cf-text-secondary);
-  font-size: 0.8rem;
+.codebase-summary-card__title {
+  color: #61708d;
+  font-size: 12px;
   font-weight: 600;
 }
 
-.codebase-breakdown-list {
+.codebase-summary-card__lines {
+  display: grid;
+  gap: 5px;
+}
+
+.codebase-summary-card__lines span {
+  display: block;
+  color: #162033;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.codebase-feedback {
   display: grid;
   gap: 10px;
+  padding: 20px;
 }
 
-.codebase-breakdown-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--cf-accent-subtle) 58%, transparent);
+.codebase-feedback strong {
+  font-size: 14px;
 }
 
-.codebase-breakdown-row strong {
-  display: block;
-  margin-bottom: 4px;
+.codebase-feedback p {
+  margin: 0;
+  color: #61708d;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.codebase-facts-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.codebase-feedback--error {
+  border-color: rgba(239, 68, 68, 0.24);
 }
 
-.codebase-fact {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--cf-accent-subtle) 58%, transparent);
-}
-
-@media (max-width: 1180px) {
-  .codebase-summary-row,
-  .codebase-breakdowns-grid,
-  .codebase-facts-grid {
+@media (max-width: 1100px) {
+  .codebase-summary-row {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 860px) {
-  .codebase-growth-card__header,
-  .codebase-treemap-card__header {
-    flex-direction: column;
-  }
-
-  .codebase-treemap-card__chart {
-    height: 460px;
-  }
-}
-
-@media (max-width: 720px) {
+@media (max-width: 780px) {
   .codebase-view {
-    padding: 66px 14px 16px;
+    padding: 16px;
+  }
+
+  .codebase-card__header {
+    flex-wrap: wrap;
+  }
+
+  .codebase-card__legend,
+  .codebase-mode-switcher {
+    margin-left: 0;
   }
 }
 </style>

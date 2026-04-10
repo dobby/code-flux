@@ -18,9 +18,13 @@ import {
   EyeOff,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
+  Palette,
   Plus,
   RefreshCw,
   Settings2,
+  SlidersHorizontal,
+  Tag,
   Users,
   X,
 } from 'lucide-vue-next'
@@ -36,6 +40,11 @@ import {
   type ExplorerRangePreset,
   useExplorerStore,
 } from './stores/explorer'
+import {
+  CONTRIBUTOR_METRIC_OPTIONS,
+  type ContributorMetric,
+  useContributorsStore,
+} from './stores/contributors'
 import DrilldownDrawer from './components/DrilldownDrawer.vue'
 
 const route = useRoute()
@@ -43,6 +52,7 @@ const router = useRouter()
 const workspace = useWorkspaceStore()
 const dashboard = useDashboardStore()
 const explorer = useExplorerStore()
+const contributors = useContributorsStore()
 useShellChrome()
 
 const sidebarCollapsed = ref(false)
@@ -77,7 +87,11 @@ const isContributorsRoute = computed(() => route.name === 'contributors')
 const isCodebaseRoute = computed(() => route.name === 'codebase' || route.name === 'codebase-repo')
 const usesSharedFilterToolbar = computed(() => isExplorerRoute.value || isContributorsRoute.value || isCodebaseRoute.value)
 const isSettingsRoute = computed(() => (
-  route.name === 'settings-general' || route.name === 'settings-jira' || route.name === 'settings-sync'
+  route.name === 'settings-general'
+  || route.name === 'settings-jira'
+  || route.name === 'settings-sync'
+  || route.name === 'settings-appearance'
+  || route.name === 'settings-advanced'
 ))
 const currentCodebaseRepoId = computed(() => (
   typeof route.params.repoId === 'string' && route.params.repoId.trim()
@@ -197,18 +211,23 @@ const overflowExplorerFilterKinds = computed(() => (
   explorer.visibleExtraFilterKinds.filter((kind) => overflowedToolbarKeys.value.includes(`chip-${kind}`))
 ))
 
-const showInlineMetric = computed(() => isExplorerRoute.value && !overflowedToolbarKeys.value.includes('metric'))
+const showInlineMetric = computed(() => isContributorsRoute.value && !overflowedToolbarKeys.value.includes('metric'))
 const showInlineDate = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('date'))
 const showInlineRepo = computed(() => (isExplorerRoute.value || isContributorsRoute.value) && !overflowedToolbarKeys.value.includes('repo'))
 const showInlineAddFilter = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('add-filter'))
-const showInlineSecondaryControls = computed(() => isExplorerRoute.value && !overflowedToolbarKeys.value.includes('secondary'))
+const showInlineSecondaryControls = computed(() => false)
 const hasExplorerToolbarOverflow = computed(() => overflowedToolbarKeys.value.length > 0)
+const toolbarMetricLabel = computed(() => (
+  isContributorsRoute.value ? `Metric: ${contributors.metricLabel}` : explorer.metricLabel
+))
 
 const currentSectionLabel = computed(() => {
   switch (route.name) {
     case 'settings-general': return 'General'
     case 'settings-jira': return 'Jira'
     case 'settings-sync': return 'Sync'
+    case 'settings-appearance': return 'Appearance'
+    case 'settings-advanced': return 'Advanced'
     case 'activity':
     case 'activity-commit': return 'Activity'
     case 'codebase': return 'Codebase'
@@ -352,7 +371,7 @@ function closeExplorerMenus() {
 }
 
 function toggleExplorerMetricMenu(event: MouseEvent) {
-  setMenuPosition(explorerMetricMenuStyle, event, 210)
+  setMenuPosition(explorerMetricMenuStyle, event, isContributorsRoute.value ? 220 : 210)
   explorerMetricMenuOpen.value = !explorerMetricMenuOpen.value
   explorerTimeMenuOpen.value = false
   explorerRepoMenuOpen.value = false
@@ -361,6 +380,15 @@ function toggleExplorerMetricMenu(event: MouseEvent) {
   explorerFilterMenuOpen.value = false
   explorerExtraFilterMenuKind.value = null
   explorerOverflowMenuOpen.value = false
+}
+
+function selectToolbarMetric(nextMetric: string) {
+  if (isContributorsRoute.value) {
+    contributors.setMetric(nextMetric as ContributorMetric)
+  } else {
+    explorer.setMetric(nextMetric as Parameters<typeof explorer.setMetric>[0])
+  }
+  closeExplorerMenus()
 }
 
 function syncExplorerCustomRangeDraft() {
@@ -620,12 +648,11 @@ function updateToolbarOverflow() {
   const available = header.clientWidth - title.offsetWidth - actions.offsetWidth - 88 - overflowButtonWidth
   if (available <= 0) {
     overflowedToolbarKeys.value = [
-      ...(isExplorerRoute.value ? ['metric'] : []),
+      ...(isContributorsRoute.value ? ['metric'] : []),
       'date',
       ...((isExplorerRoute.value || isContributorsRoute.value) ? ['repo'] : []),
       ...explorer.visibleExtraFilterKinds.map((kind) => `chip-${kind}`),
       'add-filter',
-      ...(isExplorerRoute.value ? ['secondary'] : []),
     ]
     return
   }
@@ -637,12 +664,11 @@ function updateToolbarOverflow() {
 
   const baseKeys: string[] = []
   const optionalKeys = [
-    ...(isExplorerRoute.value ? ['metric'] : []),
+    ...(isContributorsRoute.value ? ['metric'] : []),
     'date',
     ...((isExplorerRoute.value || isContributorsRoute.value) ? ['repo'] : []),
     ...explorer.visibleExtraFilterKinds.map((kind) => `chip-${kind}`),
     'add-filter',
-    ...(isExplorerRoute.value ? ['secondary'] : []),
   ]
   let used = baseKeys.reduce((sum, key) => sum + widthFor(key), 0)
   const nextOverflowed: string[] = []
@@ -706,9 +732,7 @@ onMounted(() => {
   if (storedCodebaseExpanded === 'true' || storedCodebaseExpanded === 'false') {
     codebaseNavExpanded.value = storedCodebaseExpanded === 'true'
   }
-  if (isCodebaseRoute.value) {
-    codebaseNavExpanded.value = true
-  }
+  codebaseNavExpanded.value = isCodebaseRoute.value
   void initialize()
   document.addEventListener('click', handleDocumentPointer)
   document.addEventListener('keydown', handleDocumentKeydown)
@@ -736,9 +760,7 @@ watch(
   () => route.name,
   () => {
     closeExplorerMenus()
-    if (isCodebaseRoute.value) {
-      setCodebaseNavExpanded(true)
-    }
+    codebaseNavExpanded.value = isCodebaseRoute.value
     void nextTick(() => {
       updateToolbarOverflow()
     })
@@ -794,13 +816,9 @@ onBeforeUnmount(() => {
               <Settings2 class="sidebar-icon" :size="15" />
               <span class="sidebar-item__label">General</span>
             </RouterLink>
-            <RouterLink class="sidebar-item" :to="{ name: 'settings-sync' }" data-testid="settings-nav-sync">
-              <RefreshCw
-                class="sidebar-icon"
-                :class="{ 'sidebar-icon--sync-active': dashboard.syncStatus?.running }"
-                :size="15"
-              />
-              <span class="sidebar-item__label">Sync</span>
+            <RouterLink class="sidebar-item" :to="{ name: 'settings-appearance' }" data-testid="settings-nav-appearance">
+              <Palette class="sidebar-icon" :size="15" />
+              <span class="sidebar-item__label">Appearance</span>
             </RouterLink>
             <RouterLink class="sidebar-item" :to="{ name: 'settings-jira' }" data-testid="settings-nav-jira">
               <svg class="sidebar-icon" width="15" height="15" viewBox="0 0 640 640" aria-hidden="true">
@@ -810,6 +828,20 @@ onBeforeUnmount(() => {
                 />
               </svg>
               <span class="sidebar-item__label">Jira</span>
+            </RouterLink>
+            <RouterLink class="sidebar-item" :to="{ name: 'settings-sync' }" data-testid="settings-nav-sync">
+              <RefreshCw
+                class="sidebar-icon"
+                :class="{ 'sidebar-icon--sync-active': dashboard.syncStatus?.running }"
+                :size="15"
+              />
+              <span class="sidebar-item__label">Sync</span>
+            </RouterLink>
+          </nav>
+          <nav class="sidebar-menu sidebar-menu--secondary">
+            <RouterLink class="sidebar-item" :to="{ name: 'settings-advanced' }" data-testid="settings-nav-advanced">
+              <SlidersHorizontal class="sidebar-icon" :size="15" />
+              <span class="sidebar-item__label">Advanced</span>
             </RouterLink>
           </nav>
         </template>
@@ -946,19 +978,6 @@ onBeforeUnmount(() => {
       <template v-if="usesSharedFilterToolbar">
         <div ref="explorerToolbarRef" class="content-chrome__explorer-toolbar">
           <div class="content-chrome__toolbar-group">
-            <div v-if="showInlineMetric" class="content-chrome__toolbar-item" data-toolbar-key="metric">
-            <button
-              class="content-chrome__pill"
-              type="button"
-              aria-haspopup="menu"
-              :aria-expanded="explorerMetricMenuOpen"
-              @click="toggleExplorerMetricMenu"
-            >
-              <BarChart3 :size="13" />
-              <span>{{ explorer.metricLabel }}</span>
-              <ChevronDown :size="13" />
-            </button>
-            </div>
             <div v-if="showInlineDate" class="content-chrome__toolbar-item" data-toolbar-key="date">
             <button
               class="content-chrome__pill"
@@ -970,6 +989,20 @@ onBeforeUnmount(() => {
             >
               <CalendarDays :size="13" />
               <span>{{ explorer.timeLabel }}</span>
+              <ChevronDown :size="13" />
+            </button>
+            </div>
+            <div v-if="showInlineMetric" class="content-chrome__toolbar-item" data-toolbar-key="metric">
+            <button
+              class="content-chrome__pill"
+              :class="{ 'content-chrome__pill--metric-accent': isContributorsRoute }"
+              type="button"
+              aria-haspopup="menu"
+              :aria-expanded="explorerMetricMenuOpen"
+              @click="toggleExplorerMetricMenu"
+            >
+              <BarChart3 v-if="!isContributorsRoute" :size="13" />
+              <span>{{ toolbarMetricLabel }}</span>
               <ChevronDown :size="13" />
             </button>
             </div>
@@ -1005,6 +1038,7 @@ onBeforeUnmount(() => {
                   <ChevronDown :size="13" />
                 </button>
                 <button
+                  v-if="!isCodebaseRoute"
                   class="content-chrome__chip-remove content-chrome__chip-remove--inline"
                   :aria-label="`Remove ${extraFilterMenuLabel(kind)} filter`"
                   type="button"
@@ -1062,10 +1096,10 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div ref="explorerToolbarMeasureRef" class="content-chrome__explorer-toolbar-measure" aria-hidden="true">
-            <div v-if="isExplorerRoute" class="content-chrome__toolbar-item" data-measure-key="metric">
+            <div v-if="isContributorsRoute" class="content-chrome__toolbar-item" data-measure-key="metric">
               <div class="content-chrome__pill">
-                <BarChart3 :size="13" />
-                <span>{{ explorer.metricLabel }}</span>
+                <BarChart3 v-if="!isContributorsRoute" :size="13" />
+                <span>{{ toolbarMetricLabel }}</span>
                 <ChevronDown :size="13" />
               </div>
             </div>
@@ -1131,19 +1165,19 @@ onBeforeUnmount(() => {
             role="menu"
             :style="{ top: explorerMetricMenuStyle.top, left: explorerMetricMenuStyle.left }"
           >
-            <button
-              v-for="option in EXPLORER_METRIC_OPTIONS"
-              :key="option.value"
-              class="content-chrome__menu-option"
-              role="menuitemradio"
-              :aria-checked="explorer.metric === option.value"
-              type="button"
-              @click="explorer.setMetric(option.value); closeExplorerMenus()"
-            >
-              <Check v-if="explorer.metric === option.value" :size="12" />
-              <span v-else class="content-chrome__menu-check-placeholder" />
-              {{ option.label }}
-            </button>
+              <button
+                v-for="option in isContributorsRoute ? CONTRIBUTOR_METRIC_OPTIONS : EXPLORER_METRIC_OPTIONS"
+                :key="option.value"
+                class="content-chrome__menu-option"
+                role="menuitemradio"
+                :aria-checked="isContributorsRoute ? contributors.metric === option.value : explorer.metric === option.value"
+                type="button"
+                @click="selectToolbarMetric(option.value)"
+              >
+                <Check v-if="isContributorsRoute ? contributors.metric === option.value : explorer.metric === option.value" :size="12" />
+                <span v-else class="content-chrome__menu-check-placeholder" />
+                {{ option.label }}
+              </button>
           </div>
           <div
             v-if="explorerTimeMenuOpen"
@@ -1342,6 +1376,30 @@ onBeforeUnmount(() => {
       </template>
       <div class="content-chrome__spacer" />
       <div ref="contentChromeActionsRef" class="content-chrome__actions">
+        <template v-if="isExplorerRoute">
+          <button
+            class="content-chrome__ghost"
+            type="button"
+            @click="explorer.openNewAnnotation()"
+          >
+            <Tag :size="13" />
+            <span>Annotations</span>
+          </button>
+        </template>
+        <template v-else-if="isContributorsRoute">
+          <button class="content-chrome__ghost" type="button">
+            <Pencil :size="13" />
+            <span>Edit</span>
+          </button>
+          <button class="content-chrome__ghost content-chrome__ghost--overflow" type="button">
+            <MoreHorizontal :size="14" />
+          </button>
+        </template>
+        <template v-else-if="isCodebaseRoute">
+          <button class="content-chrome__ghost content-chrome__ghost--overflow" type="button">
+            <MoreHorizontal :size="14" />
+          </button>
+        </template>
         <template v-if="route.name === 'settings-sync'">
           <button
             class="content-chrome__ghost content-chrome__ghost--overflow"

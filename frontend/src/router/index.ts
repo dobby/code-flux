@@ -6,6 +6,8 @@ import WidgetEditorView from '../views/WidgetEditorView.vue'
 import JiraSettingsView from '../views/JiraSettingsView.vue'
 import GeneralSettingsView from '../views/GeneralSettingsView.vue'
 import SyncView from '../views/SyncView.vue'
+import AppearanceSettingsView from '../views/AppearanceSettingsView.vue'
+import AdvancedSettingsView from '../views/AdvancedSettingsView.vue'
 import CodebaseView from '../views/CodebaseView.vue'
 import ContributorsView from '../views/ContributorsView.vue'
 import DashboardView from '../views/DashboardView.vue'
@@ -86,6 +88,16 @@ export const router = createRouter({
       path: '/settings/jira',
       name: 'settings-jira',
       component: JiraSettingsView,
+    },
+    {
+      path: '/settings/appearance',
+      name: 'settings-appearance',
+      component: AppearanceSettingsView,
+    },
+    {
+      path: '/settings/advanced',
+      name: 'settings-advanced',
+      component: AdvancedSettingsView,
     },
     {
       path: '/legacy/overview',

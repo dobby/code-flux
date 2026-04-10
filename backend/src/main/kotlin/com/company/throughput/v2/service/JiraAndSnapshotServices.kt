@@ -532,6 +532,13 @@ class V2SeedRunner(
     private fun seedPages(widgetsByTitle: Map<String, com.company.throughput.v2.model.WidgetDefinition>) {
         val existingPages = pageService.list(includeArchived = true)
         val placeholderPage = existingPages.firstOrNull { it.title == "Weekly repo review" }
+        val canonicalTeamVelocityLayouts = listOf(
+            "Lines Added Over Time" to com.company.throughput.v2.model.LayoutSpec(x = 0, y = 0, w = 6, h = 8),
+            "Commits by Author" to com.company.throughput.v2.model.LayoutSpec(x = 6, y = 0, w = 6, h = 8),
+            "Commit Count" to com.company.throughput.v2.model.LayoutSpec(x = 0, y = 8, w = 4, h = 4),
+            "Active Contributors" to com.company.throughput.v2.model.LayoutSpec(x = 4, y = 8, w = 4, h = 4),
+            "Files Changed" to com.company.throughput.v2.model.LayoutSpec(x = 8, y = 8, w = 4, h = 4),
+        )
 
         fun ensurePage(
             title: String,
@@ -578,16 +585,9 @@ class V2SeedRunner(
         ensurePage("Sprint Overview", "Keep a tight read on delivery signals for the current sprint.")
         ensurePage("Code Quality", "Watch churn, shape, and code health signals over time.")
 
-        if (pageService.listResolvedWidgets(teamVelocityPage.id).isEmpty()) {
-            val layouts = listOf(
-                Triple("Lines Added Over Time", com.company.throughput.v2.model.LayoutSpec(x = 0, y = 0, w = 6, h = 8), null),
-                Triple("Commits by Author", com.company.throughput.v2.model.LayoutSpec(x = 6, y = 0, w = 6, h = 8), null),
-                Triple("Commit Count", com.company.throughput.v2.model.LayoutSpec(x = 0, y = 8, w = 4, h = 4), null),
-                Triple("Active Contributors", com.company.throughput.v2.model.LayoutSpec(x = 4, y = 8, w = 4, h = 4), null),
-                Triple("Files Changed", com.company.throughput.v2.model.LayoutSpec(x = 8, y = 8, w = 4, h = 4), null),
-            )
-
-            layouts.forEach { (title, layout, descriptionOverride) ->
+        val teamVelocityWidgets = pageService.listResolvedWidgets(teamVelocityPage.id)
+        if (teamVelocityWidgets.isEmpty()) {
+            canonicalTeamVelocityLayouts.forEach { (title, layout) ->
                 val widget = requireNotNull(widgetsByTitle[title]) { "Missing seeded widget: $title" }
                 pageService.addWidget(
                     teamVelocityPage.id,
@@ -595,10 +595,41 @@ class V2SeedRunner(
                         widgetDefinitionId = widget.id,
                         kind = widget.kind,
                         layout = layout,
-                        descriptionOverride = descriptionOverride,
                     ),
                 )
             }
+        } else {
+            normalizeSeededPageLayout(teamVelocityPage.id, teamVelocityWidgets, canonicalTeamVelocityLayouts)
         }
+    }
+
+    private fun normalizeSeededPageLayout(
+        pageId: String,
+        widgets: List<com.company.throughput.v2.model.PageWidgetResolved>,
+        canonicalLayouts: List<Pair<String, com.company.throughput.v2.model.LayoutSpec>>,
+    ) {
+        if (widgets.size != canonicalLayouts.size) {
+            return
+        }
+
+        val widgetsByTitle = widgets.associateBy { it.effectiveTitle }
+        val canonicalTitles = canonicalLayouts.map { it.first }.toSet()
+        if (widgetsByTitle.keys != canonicalTitles) {
+            return
+        }
+
+        val needsUpdate = canonicalLayouts.any { (title, layout) ->
+            widgetsByTitle.getValue(title).instance.layout != layout
+        }
+        if (!needsUpdate) {
+            return
+        }
+
+        pageService.updateLayouts(
+            pageId,
+            canonicalLayouts.map { (title, layout) ->
+                widgetsByTitle.getValue(title).instance.id to layout
+            },
+        )
     }
 }

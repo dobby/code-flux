@@ -241,7 +241,7 @@ const currentSectionLabel = computed(() => {
     case 'widgets':
     case 'widget-new':
     case 'widget-edit': return 'Widget Catalog'
-    case 'page': return ''
+    case 'page': return currentPage.value?.title ?? 'Page'
     default: return currentPage.value?.title ?? 'Code Flux'
   }
 })

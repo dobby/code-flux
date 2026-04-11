@@ -103,6 +103,11 @@ function formatFilter(filter: ToolbarFilter) {
         <span>Filter</span>
       </button>
 
+      <button class="button button--ghost" type="button" data-testid="page-add-widget" @click="emit('open-widget-picker')">
+        <Plus :size="16" />
+        <span>Widget</span>
+      </button>
+
       <div class="page-toolbar__spacer" />
 
       <button class="icon-button" type="button" title="Fullscreen" @click="emit('request-fullscreen')">

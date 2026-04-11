@@ -53,7 +53,7 @@ test.describe('v2 workspace', () => {
     await expect(page.locator(`[data-testid^="widget-tile-"]`).filter({ hasText: widgetTitle })).toBeVisible()
   })
 
-  test('layout drag and resize persist after reload', async ({ page }) => {
+  test('layout drag reorder persists after reload', async ({ page }) => {
     await page.goto('/')
     await createPageFromSidebar(page, `Layout page ${Date.now()}`)
 
@@ -61,7 +61,7 @@ test.describe('v2 workspace', () => {
     await addWidgetFromDialog(page, 'Current language mix')
 
     await page.getByTestId('page-edit-mode-toggle').click()
-    await expect(page.getByTestId('page-edit-mode-label')).toHaveText('View mode')
+    await expect(page.getByTestId('page-edit-mode-toggle')).toContainText('Done')
 
     const widgetIds = await page.locator('[data-testid^="widget-grid-item-"]').evaluateAll((nodes) =>
       nodes
@@ -71,23 +71,15 @@ test.describe('v2 workspace', () => {
     expect(widgetIds.length).toBeGreaterThanOrEqual(2)
 
     const draggedWidgetId = widgetIds[1]
-    const beforeDrag = await readGridLayout(page, draggedWidgetId)
+    const beforeDrag = await readGridOrder(page)
     await dragWidgetByHandle(page, draggedWidgetId, { x: 340, y: 120 })
     await page.waitForTimeout(1200)
-    const afterDrag = await readGridLayout(page, draggedWidgetId)
+    const afterDrag = await readGridOrder(page)
     expect(afterDrag).not.toEqual(beforeDrag)
 
-    const resizedWidgetId = widgetIds[0]
-    const beforeResize = await readGridLayout(page, resizedWidgetId)
-    await resizeWidget(page, resizedWidgetId, { x: 140, y: 50 })
-    await page.waitForTimeout(1200)
-    const afterResize = await readGridLayout(page, resizedWidgetId)
-    expect(afterResize.w).toBeGreaterThanOrEqual(beforeResize.w)
-    expect(afterResize.h).toBeGreaterThanOrEqual(beforeResize.h)
-
     await page.reload()
-    expect(await readGridLayout(page, draggedWidgetId)).toEqual(afterDrag)
-    expect(await readGridLayout(page, resizedWidgetId)).toEqual(afterResize)
+    await expect(page.locator('[data-testid^="widget-grid-item-"]').first()).toBeVisible()
+    expect(await readGridOrder(page)).toEqual(afterDrag)
   })
 
   test('drilldown tabs and annotation persistence work', async ({ page }) => {
@@ -404,53 +396,43 @@ async function createPageFromSidebar(page: Page, title: string): Promise<string>
 
 async function addWidgetFromDialog(page: Page, widgetTitle: string) {
   await page.getByTestId('page-add-widget').click()
-  await expect(page.getByTestId('add-widget-dialog')).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Widget picker' })).toBeVisible()
   await page.getByRole('button', { name: new RegExp(widgetTitle, 'i') }).click()
 }
 
 async function dragWidgetByHandle(page: Page, widgetId: string, delta: { x: number; y: number }) {
   await page.evaluate(
     ([targetWidgetId, targetDelta]) => {
-      const gridElement = document.querySelector('.grid-stack') as (HTMLElement & { gridstack?: { update: (el: HTMLElement, options: { x: number; y: number }) => void } }) | null
-      const widgetElement = document.querySelector(`[data-testid="widget-grid-item-${targetWidgetId}"]`) as (HTMLElement & {
-        gridstackNode?: { x?: number; y?: number }
+      const gridElement = document.querySelector('[data-testid="muuri-page-grid"]') as (HTMLElement & {
+        muuri?: {
+          getItems: () => Array<{ getElement: () => HTMLElement | undefined }>
+          move: (item: HTMLElement, position: number, options: { layout: 'instant' }) => void
+        }
       }) | null
-      if (!gridElement?.gridstack || !widgetElement?.gridstackNode) {
-        throw new Error('GridStack widget not available for drag test')
+      const widgetElement = document.querySelector(`[data-testid="widget-grid-item-${targetWidgetId}"]`) as HTMLElement | null
+      if (!gridElement?.muuri || !widgetElement) {
+        throw new Error('Muuri widget not available for drag test')
       }
-      const nextX = Math.max(0, (widgetElement.gridstackNode.x ?? 0) + Math.max(1, Math.round(targetDelta.x / 170)))
-      const nextY = Math.max(0, (widgetElement.gridstackNode.y ?? 0) + Math.max(1, Math.round(targetDelta.y / 110)))
-      gridElement.gridstack.update(widgetElement, { x: nextX, y: nextY })
+      const items = gridElement.muuri.getItems()
+      const currentIndex = items.findIndex((item) => item.getElement() === widgetElement)
+      if (currentIndex < 0) {
+        throw new Error('Muuri widget item not found')
+      }
+      const targetOffset = Math.max(1, Math.round((Math.abs(targetDelta.x) + Math.abs(targetDelta.y)) / 240))
+      const addSlotOffset = items.at(-1)?.getElement()?.dataset.id === '__page_add_widget_slot__' ? 1 : 0
+      const maxIndex = Math.max(0, items.length - 1 - addSlotOffset)
+      const direction = currentIndex >= maxIndex ? -1 : 1
+      const nextIndex = Math.max(0, Math.min(maxIndex, currentIndex + (direction * targetOffset)))
+      gridElement.muuri.move(widgetElement, nextIndex, { layout: 'instant' })
     },
     [widgetId, delta] as const,
   )
 }
 
-async function resizeWidget(page: Page, widgetId: string, delta: { x: number; y: number }) {
-  await page.evaluate(
-    ([targetWidgetId, targetDelta]) => {
-      const gridElement = document.querySelector('.grid-stack') as (HTMLElement & { gridstack?: { update: (el: HTMLElement, options: { w: number; h: number }) => void } }) | null
-      const widgetElement = document.querySelector(`[data-testid="widget-grid-item-${targetWidgetId}"]`) as (HTMLElement & {
-        gridstackNode?: { w?: number; h?: number }
-      }) | null
-      if (!gridElement?.gridstack || !widgetElement?.gridstackNode) {
-        throw new Error('GridStack widget not available for resize test')
-      }
-      const nextW = Math.max(1, (widgetElement.gridstackNode.w ?? 1) + Math.max(1, Math.round(targetDelta.x / 120)))
-      const nextH = Math.max(1, (widgetElement.gridstackNode.h ?? 1) + Math.max(1, Math.round(targetDelta.y / 120)))
-      gridElement.gridstack.update(widgetElement, { w: nextW, h: nextH })
-    },
-    [widgetId, delta] as const,
+async function readGridOrder(page: Page) {
+  return page.locator('[data-testid^="widget-grid-item-"]').evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('data-testid')?.replace('widget-grid-item-', '') ?? ''),
   )
-}
-
-async function readGridLayout(page: Page, widgetId: string) {
-  return page.locator(`[data-testid="widget-grid-item-${widgetId}"]`).evaluate((node) => ({
-    x: Number(node.getAttribute('gs-x') ?? '0'),
-    y: Number(node.getAttribute('gs-y') ?? '0'),
-    w: Number(node.getAttribute('gs-w') ?? '0'),
-    h: Number(node.getAttribute('gs-h') ?? '0'),
-  }))
 }
 
 function queueDialogs(page: Page, responses: Array<string | true>) {

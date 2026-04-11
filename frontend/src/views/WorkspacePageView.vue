@@ -4,9 +4,9 @@ import { Check, Plus, X } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '../stores/workspace'
 import type { FilterOperator, PageFilterState, PageTimeRange, WidgetKind } from '../types/workspace'
-import PageGrid from '../components/PageGrid.vue'
 import PageToolbar from '../components/PageToolbar.vue'
 import PageWidgetPicker from '../components/PageWidgetPicker.vue'
+import MuuriGrid from '../components/MuuriGrid.vue'
 
 const props = defineProps<{
   pageId: string
@@ -508,7 +508,7 @@ onMounted(() => {
           </button>
         </div>
 
-        <PageGrid
+        <MuuriGrid
           v-else
           :page-id="pageId"
           :widgets="widgets"

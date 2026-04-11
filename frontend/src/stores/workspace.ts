@@ -272,6 +272,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   function queueLayoutSave(pageId: string, items: Array<{ id: string; layout: LayoutSpec }>) {
     saveStates[pageId] = 'saving'
+    const currentWidgets = pageWidgets[pageId] ?? []
+    const updateById = new Map(items.map((item, index) => [item.id, { ...item, sortOrder: index }]))
+    const updatedWidgets = currentWidgets.map((widget) => {
+      const update = updateById.get(widget.instance.id)
+      if (!update) {
+        return widget
+      }
+      return {
+        ...widget,
+        instance: {
+          ...widget.instance,
+          layout: update.layout,
+          sortOrder: update.sortOrder,
+        },
+      }
+    })
+    pageWidgets[pageId] = updatedWidgets.slice().sort((left, right) => left.instance.sortOrder - right.instance.sortOrder)
+
     if (layoutSaveTimer != null) {
       window.clearTimeout(layoutSaveTimer)
     }
@@ -279,7 +297,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       try {
         await reorderPageLayout(pageId, items)
         saveStates[pageId] = 'saved'
-        await loadPage(pageId)
       } catch {
         saveStates[pageId] = 'error'
       }

@@ -148,7 +148,8 @@ onMounted(() => {
 .widget-catalog {
   display: grid;
   gap: 14px;
-  padding: 8px 0 8px;
+  min-height: 100%;
+  padding: 24px;
 }
 
 .widget-catalog__header {
@@ -257,8 +258,8 @@ onMounted(() => {
 
 .widget-catalog__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .widget-card {
@@ -375,6 +376,10 @@ onMounted(() => {
 }
 
 @media (max-width: 1100px) {
+  .widget-catalog {
+    padding: 16px;
+  }
+
   .widget-catalog__header,
   .widget-catalog__toolbar {
     grid-template-columns: 1fr;

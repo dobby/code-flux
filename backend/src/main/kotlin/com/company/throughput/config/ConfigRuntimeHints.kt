@@ -96,6 +96,7 @@ class ConfigRuntimeHints : RuntimeHintsRegistrar {
                 ClassificationRuleConfig::class.java,
                 UiDefaultsProperties::class.java,
                 SyncWindowProperties::class.java,
+                AppearanceProperties::class.java,
             ),
         )
 

@@ -113,8 +113,20 @@ class ApiContractTests(
             .andExpect(jsonPath("$.path").value(testConfigPath.toString()))
             .andExpect(jsonPath("$.config.repos[0].id").value("marcando-api"))
             .andExpect(jsonPath("$.config.authors.include[0].id").value("eli"))
+            .andExpect(jsonPath("$.config.appearance.mode").value("system"))
+            .andExpect(jsonPath("$.config.appearance.accent").value("indigo"))
             .andExpect(jsonPath("$.yaml").isString)
             .andExpect(jsonPath("$.restartRequired").value(false))
+    }
+
+    @Test
+    fun `appearance endpoint returns saved appearance config`() {
+        mockMvc.perform(get("/api/config/appearance"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.appearance.mode").value("system"))
+            .andExpect(jsonPath("$.appearance.accent").value("indigo"))
+            .andExpect(jsonPath("$.appearance.animateCharts").value(true))
+            .andExpect(jsonPath("$.appearance.compactRows").value(false))
     }
 
     @Test
@@ -192,6 +204,12 @@ class ApiContractTests(
                       "syncWindow": {
                         "from": "2025-01-01",
                         "to": "2025-12-31"
+                      },
+                      "appearance": {
+                        "mode": "dark",
+                        "accent": "blue",
+                        "animateCharts": false,
+                        "compactRows": true
                       }
                     }
                     """.trimIndent(),
@@ -199,9 +217,42 @@ class ApiContractTests(
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.config.repos[0].displayName").value("Marcando API V2"))
+            .andExpect(jsonPath("$.config.appearance.mode").value("dark"))
+            .andExpect(jsonPath("$.config.appearance.accent").value("blue"))
             .andExpect(jsonPath("$.yaml").value(org.hamcrest.Matchers.containsString("Marcando API V2")))
+            .andExpect(jsonPath("$.yaml").value(org.hamcrest.Matchers.containsString("appearance:")))
             .andExpect(jsonPath("$.yaml").value(org.hamcrest.Matchers.containsString("__CODE_FLUX_REDACTED__")))
             .andExpect(jsonPath("$.restartRequired").value(true))
+    }
+
+    @Test
+    fun `appearance update persists without using full builder payload`() {
+        mockMvc.perform(
+            put("/api/config/appearance")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "mode": "light",
+                      "accent": "amber",
+                      "animateCharts": false,
+                      "compactRows": true
+                    }
+                    """.trimIndent(),
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.appearance.mode").value("light"))
+            .andExpect(jsonPath("$.appearance.accent").value("amber"))
+            .andExpect(jsonPath("$.appearance.animateCharts").value(false))
+            .andExpect(jsonPath("$.appearance.compactRows").value(true))
+
+        mockMvc.perform(get("/api/config/builder"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.config.appearance.mode").value("light"))
+            .andExpect(jsonPath("$.config.appearance.accent").value("amber"))
+            .andExpect(jsonPath("$.config.appearance.animateCharts").value(false))
+            .andExpect(jsonPath("$.config.appearance.compactRows").value(true))
     }
 
     @Test

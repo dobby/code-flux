@@ -31,15 +31,18 @@ import {
 import { useShellChrome } from './composables/useShellChrome'
 import { useWorkspaceStore } from './stores/workspace'
 import { useDashboardStore } from './stores/dashboard'
+import { useNavigationStore } from './stores/navigation'
 import {
-  EXPLORER_CHART_STYLE_OPTIONS,
-  EXPLORER_EXTRA_FILTER_OPTIONS,
-  EXPLORER_GROUP_BY_OPTIONS,
-  EXPLORER_METRIC_OPTIONS,
-  type ExplorerExtraFilterKind,
-  type ExplorerRangePreset,
-  useExplorerStore,
-} from './stores/explorer'
+  ACTIVITY_CHART_STYLE_OPTIONS,
+  ACTIVITY_COMPARE_PRESET_OPTIONS,
+  ACTIVITY_EXTRA_FILTER_OPTIONS,
+  ACTIVITY_GROUP_BY_OPTIONS,
+  ACTIVITY_METRIC_OPTIONS,
+  type ActivityComparePresetMode,
+  type ActivityExtraFilterKind,
+  type ActivityRangePreset,
+  useActivityStore,
+} from './stores/activity'
 import {
   CONTRIBUTOR_METRIC_OPTIONS,
   type ContributorMetric,
@@ -51,7 +54,8 @@ const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspaceStore()
 const dashboard = useDashboardStore()
-const explorer = useExplorerStore()
+const navigation = useNavigationStore()
+const explorer = useActivityStore()
 const contributors = useContributorsStore()
 useShellChrome()
 
@@ -93,38 +97,31 @@ const isSettingsRoute = computed(() => (
   || route.name === 'settings-appearance'
   || route.name === 'settings-advanced'
 ))
-const currentCodebaseRepoId = computed(() => (
-  typeof route.params.repoId === 'string' && route.params.repoId.trim()
-    ? route.params.repoId
-    : null
-))
-const enabledCodebaseRepos = computed(() => (
-  (dashboard.bootstrap?.repos ?? []).filter((repo) => repo.enabled)
-))
-const codebaseNavExpanded = ref(true)
-
 type ExplorerMenuStyle = { top: string; left?: string; right?: string }
 type ExplorerOverflowPanel =
   | 'metric'
   | 'date'
   | 'repo'
   | 'add-filter'
+  | 'compare'
   | 'group'
   | 'display'
-  | `filter:${ExplorerExtraFilterKind}`
+  | `filter:${ActivityExtraFilterKind}`
   | null
 const explorerTimeMenuOpen = ref(false)
 const explorerRepoMenuOpen = ref(false)
 const explorerMetricMenuOpen = ref(false)
+const explorerCompareMenuOpen = ref(false)
 const explorerGroupMenuOpen = ref(false)
 const explorerDisplayMenuOpen = ref(false)
 const explorerFilterMenuOpen = ref(false)
-const explorerExtraFilterMenuKind = ref<ExplorerExtraFilterKind | null>(null)
+const explorerExtraFilterMenuKind = ref<ActivityExtraFilterKind | null>(null)
 const explorerOverflowMenuOpen = ref(false)
 const explorerOverflowPanel = ref<ExplorerOverflowPanel>(null)
 const explorerTimeMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
 const explorerRepoMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
 const explorerMetricMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
+const explorerCompareMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
 const explorerGroupMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
 const explorerDisplayMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
 const explorerFilterMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: '0px' })
@@ -132,6 +129,9 @@ const explorerExtraFilterMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', left: 
 const explorerOverflowMenuStyle = ref<ExplorerMenuStyle>({ top: '0px', right: '0px' })
 const explorerCustomFromDraft = ref('')
 const explorerCustomToDraft = ref('')
+const explorerCompareAnchorDraft = ref('')
+const explorerCompareFromDraft = ref('')
+const explorerCompareToDraft = ref('')
 const contentChromeRef = ref<HTMLElement | null>(null)
 const contentChromeTitleRef = ref<HTMLElement | null>(null)
 const contentChromeActionsRef = ref<HTMLElement | null>(null)
@@ -188,7 +188,7 @@ function setMenuRightAlignedPosition(
   }
 }
 
-const explorerRangeOptions: Array<{ id: Exclude<ExplorerRangePreset, 'custom'>; label: string }> = [
+const explorerRangeOptions: Array<{ id: Exclude<ActivityRangePreset, 'custom'>; label: string }> = [
   { id: '7d', label: 'Last 7 days' },
   { id: '14d', label: 'Last 14 days' },
   { id: '30d', label: 'Last 30 days' },
@@ -213,21 +213,25 @@ const overflowExplorerFilterKinds = computed(() => (
 
 const showInlineMetric = computed(() => isContributorsRoute.value && !overflowedToolbarKeys.value.includes('metric'))
 const showInlineDate = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('date'))
-const showInlineRepo = computed(() => (isExplorerRoute.value || isContributorsRoute.value) && !overflowedToolbarKeys.value.includes('repo'))
+const showInlineRepo = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('repo'))
 const showInlineAddFilter = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('add-filter'))
-const showInlineSecondaryControls = computed(() => false)
+const showInlineSecondaryControls = computed(() => isExplorerRoute.value && !overflowedToolbarKeys.value.includes('secondary'))
 const hasExplorerToolbarOverflow = computed(() => overflowedToolbarKeys.value.length > 0)
 const toolbarMetricLabel = computed(() => (
   isContributorsRoute.value ? `Metric: ${contributors.metricLabel}` : explorer.metricLabel
 ))
+const compareToolbarLabel = computed(() => (
+  explorer.compareEnabled ? explorer.compareModeLabel : 'Compare'
+))
 
 const currentSectionLabel = computed(() => {
   switch (route.name) {
-    case 'settings-general': return 'General'
-    case 'settings-jira': return 'Jira'
-    case 'settings-sync': return 'Sync'
-    case 'settings-appearance': return 'Appearance'
-    case 'settings-advanced': return 'Advanced'
+    case 'settings-general':
+    case 'settings-jira':
+    case 'settings-sync':
+    case 'settings-appearance':
+    case 'settings-advanced':
+      return 'Settings'
     case 'activity':
     case 'activity-commit': return 'Activity'
     case 'codebase': return 'Codebase'
@@ -261,6 +265,10 @@ async function initialize() {
   await workspace.loadWidgetCatalog()
 }
 
+async function goBackToApp() {
+  await router.push(navigation.backToAppTarget)
+}
+
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
   window.localStorage.setItem('code-flux-v2-sidebar-collapsed', String(sidebarCollapsed.value))
@@ -291,40 +299,6 @@ async function createPagePrompt() {
   await workspace.createPageAndRefresh({ title: title.trim() })
   const page = workspace.orderedPages.at(-1)
   if (page) await router.push({ name: 'page', params: { pageId: page.id } })
-}
-
-function setCodebaseNavExpanded(nextExpanded: boolean) {
-  codebaseNavExpanded.value = nextExpanded
-  window.localStorage.setItem('code-flux-v2-codebase-nav-expanded', String(nextExpanded))
-}
-
-function resolveCodebaseTargetRepoId() {
-  return currentCodebaseRepoId.value ?? enabledCodebaseRepos.value[0]?.id ?? null
-}
-
-function navigateToCodebase(repoId?: string | null) {
-  const targetRepoId = repoId ?? resolveCodebaseTargetRepoId()
-  if (targetRepoId) {
-    void router.push({ name: 'codebase-repo', params: { repoId: targetRepoId } })
-    return
-  }
-  void router.push({ name: 'codebase' })
-}
-
-function handleCodebaseNavClick() {
-  if (route.name === 'codebase') {
-    setCodebaseNavExpanded(true)
-    navigateToCodebase()
-    return
-  }
-
-  if (route.name === 'codebase-repo') {
-    setCodebaseNavExpanded(!codebaseNavExpanded.value)
-    return
-  }
-
-  setCodebaseNavExpanded(true)
-  navigateToCodebase()
 }
 
 async function renamePagePrompt(pageId: string, currentTitle: string) {
@@ -362,6 +336,7 @@ function closeExplorerMenus() {
   explorerTimeMenuOpen.value = false
   explorerRepoMenuOpen.value = false
   explorerMetricMenuOpen.value = false
+  explorerCompareMenuOpen.value = false
   explorerGroupMenuOpen.value = false
   explorerDisplayMenuOpen.value = false
   explorerFilterMenuOpen.value = false
@@ -379,6 +354,7 @@ function toggleExplorerMetricMenu(event: MouseEvent) {
   explorerDisplayMenuOpen.value = false
   explorerFilterMenuOpen.value = false
   explorerExtraFilterMenuKind.value = null
+  explorerCompareMenuOpen.value = false
   explorerOverflowMenuOpen.value = false
 }
 
@@ -399,6 +375,35 @@ function syncExplorerCustomRangeDraft() {
   explorerCustomToDraft.value = sourceRange.to
 }
 
+function syncExplorerCompareDraft() {
+  explorerCompareAnchorDraft.value = explorer.compareAnchorDate
+  explorerCompareFromDraft.value = explorer.compareCustomRange?.from ?? ''
+  explorerCompareToDraft.value = explorer.compareCustomRange?.to ?? ''
+}
+
+function daysInclusive(from: string, to: string) {
+  const fromDate = new Date(`${from}T00:00:00`)
+  const toDate = new Date(`${to}T00:00:00`)
+  return Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1)
+}
+
+const compareAnchorDraftValid = computed(() => (
+  Boolean(
+    explorerCompareAnchorDraft.value
+    && explorerCompareAnchorDraft.value < explorer.effectiveDateRange.from,
+  )
+))
+
+const compareRangeDraftValid = computed(() => (
+  Boolean(
+    explorerCompareFromDraft.value
+    && explorerCompareToDraft.value
+    && explorerCompareFromDraft.value <= explorerCompareToDraft.value
+    && explorerCompareToDraft.value < explorer.effectiveDateRange.from
+    && daysInclusive(explorerCompareFromDraft.value, explorerCompareToDraft.value) === explorer.rangeDays,
+  )
+))
+
 function toggleExplorerTimeMenu(event: MouseEvent) {
   setMenuPosition(explorerTimeMenuStyle, event, 248)
   const nextOpen = !explorerTimeMenuOpen.value
@@ -408,6 +413,7 @@ function toggleExplorerTimeMenu(event: MouseEvent) {
   }
   explorerRepoMenuOpen.value = false
   explorerMetricMenuOpen.value = false
+  explorerCompareMenuOpen.value = false
   explorerGroupMenuOpen.value = false
   explorerDisplayMenuOpen.value = false
   explorerFilterMenuOpen.value = false
@@ -420,11 +426,34 @@ function toggleExplorerRepoMenu(event: MouseEvent) {
   explorerRepoMenuOpen.value = !explorerRepoMenuOpen.value
   explorerTimeMenuOpen.value = false
   explorerMetricMenuOpen.value = false
+  explorerCompareMenuOpen.value = false
   explorerGroupMenuOpen.value = false
   explorerDisplayMenuOpen.value = false
   explorerFilterMenuOpen.value = false
   explorerExtraFilterMenuKind.value = null
   explorerOverflowMenuOpen.value = false
+}
+
+function clearRepoFiltersForCurrentRoute() {
+  if (isCodebaseRoute.value) {
+    const fallbackRepoId = (dashboard.bootstrap?.repos ?? []).find((repo) => repo.enabled)?.id ?? null
+    explorer.setRepoFilters(fallbackRepoId ? [fallbackRepoId] : [])
+    closeExplorerMenus()
+    return
+  }
+
+  explorer.setRepoFilters([])
+  closeExplorerMenus()
+}
+
+function selectRepoFilterForCurrentRoute(repoId: string) {
+  if (isCodebaseRoute.value) {
+    explorer.setRepoFilters([repoId])
+    closeExplorerMenus()
+    return
+  }
+
+  explorer.toggleRepoFilter(repoId)
 }
 
 function toggleExplorerGroupMenu(event: MouseEvent) {
@@ -433,6 +462,7 @@ function toggleExplorerGroupMenu(event: MouseEvent) {
   explorerTimeMenuOpen.value = false
   explorerRepoMenuOpen.value = false
   explorerMetricMenuOpen.value = false
+  explorerCompareMenuOpen.value = false
   explorerDisplayMenuOpen.value = false
   explorerFilterMenuOpen.value = false
   explorerExtraFilterMenuKind.value = null
@@ -445,6 +475,7 @@ function toggleExplorerDisplayMenu(event: MouseEvent) {
   explorerTimeMenuOpen.value = false
   explorerRepoMenuOpen.value = false
   explorerMetricMenuOpen.value = false
+  explorerCompareMenuOpen.value = false
   explorerGroupMenuOpen.value = false
   explorerFilterMenuOpen.value = false
   explorerExtraFilterMenuKind.value = null
@@ -457,18 +488,20 @@ function toggleExplorerFilterMenu(event: MouseEvent) {
   explorerTimeMenuOpen.value = false
   explorerRepoMenuOpen.value = false
   explorerMetricMenuOpen.value = false
+  explorerCompareMenuOpen.value = false
   explorerGroupMenuOpen.value = false
   explorerDisplayMenuOpen.value = false
   explorerExtraFilterMenuKind.value = null
   explorerOverflowMenuOpen.value = false
 }
 
-function toggleExplorerExtraFilterMenu(kind: ExplorerExtraFilterKind, event: MouseEvent) {
+function toggleExplorerExtraFilterMenu(kind: ActivityExtraFilterKind, event: MouseEvent) {
   setMenuPosition(explorerExtraFilterMenuStyle, event, 240)
   explorerExtraFilterMenuKind.value = explorerExtraFilterMenuKind.value === kind ? null : kind
   explorerTimeMenuOpen.value = false
   explorerRepoMenuOpen.value = false
   explorerMetricMenuOpen.value = false
+  explorerCompareMenuOpen.value = false
   explorerGroupMenuOpen.value = false
   explorerDisplayMenuOpen.value = false
   explorerFilterMenuOpen.value = false
@@ -482,6 +515,7 @@ function toggleExplorerOverflowMenu(event: MouseEvent) {
   explorerTimeMenuOpen.value = false
   explorerRepoMenuOpen.value = false
   explorerMetricMenuOpen.value = false
+  explorerCompareMenuOpen.value = false
   explorerGroupMenuOpen.value = false
   explorerDisplayMenuOpen.value = false
   explorerFilterMenuOpen.value = false
@@ -489,7 +523,49 @@ function toggleExplorerOverflowMenu(event: MouseEvent) {
   explorerOverflowPanel.value = nextOpen ? explorerOverflowPanel.value : null
 }
 
-function addExplorerExtraFilter(kind: ExplorerExtraFilterKind) {
+function toggleExplorerCompareMenu(event: MouseEvent) {
+  setMenuPosition(explorerCompareMenuStyle, event, 264)
+  const nextOpen = !explorerCompareMenuOpen.value
+  explorerCompareMenuOpen.value = nextOpen
+  if (nextOpen) {
+    syncExplorerCompareDraft()
+  }
+  explorerTimeMenuOpen.value = false
+  explorerRepoMenuOpen.value = false
+  explorerMetricMenuOpen.value = false
+  explorerGroupMenuOpen.value = false
+  explorerDisplayMenuOpen.value = false
+  explorerFilterMenuOpen.value = false
+  explorerExtraFilterMenuKind.value = null
+  explorerOverflowMenuOpen.value = false
+}
+
+function applyExplorerComparePreset(mode: Exclude<ActivityComparePresetMode, 'off' | 'custom_anchor_date' | 'custom_range'>) {
+  explorer.setComparePreset(mode)
+  closeExplorerMenus()
+}
+
+function disableExplorerCompare() {
+  explorer.disableCompare()
+  closeExplorerMenus()
+}
+
+function applyExplorerCompareAnchor() {
+  if (explorer.setCompareAnchor(explorerCompareAnchorDraft.value)) {
+    closeExplorerMenus()
+  }
+}
+
+function applyExplorerCompareCustomRange() {
+  if (explorer.setCompareCustomRange({
+    from: explorerCompareFromDraft.value,
+    to: explorerCompareToDraft.value,
+  })) {
+    closeExplorerMenus()
+  }
+}
+
+function addExplorerExtraFilter(kind: ActivityExtraFilterKind) {
   explorer.addExtraFilter(kind)
   explorerFilterMenuOpen.value = false
   explorerOverflowMenuOpen.value = false
@@ -501,25 +577,28 @@ function toggleExplorerOverflowPanel(panel: Exclude<ExplorerOverflowPanel, null>
   if (nextPanel === 'date') {
     syncExplorerCustomRangeDraft()
   }
+  if (nextPanel === 'compare') {
+    syncExplorerCompareDraft()
+  }
 }
 
 function isExplorerOverflowPanelOpen(panel: Exclude<ExplorerOverflowPanel, null>) {
   return explorerOverflowPanel.value === panel
 }
 
-function addExplorerExtraFilterInOverflow(kind: ExplorerExtraFilterKind) {
+function addExplorerExtraFilterInOverflow(kind: ActivityExtraFilterKind) {
   explorer.addExtraFilter(kind)
   explorerOverflowPanel.value = `filter:${kind}`
 }
 
-function removeExplorerExtraFilter(kind: ExplorerExtraFilterKind) {
+function removeExplorerExtraFilter(kind: ActivityExtraFilterKind) {
   explorer.removeExtraFilter(kind)
   if (explorerExtraFilterMenuKind.value === kind) {
     explorerExtraFilterMenuKind.value = null
   }
 }
 
-function clearExplorerExtraFilterSelection(kind: ExplorerExtraFilterKind) {
+function clearExplorerExtraFilterSelection(kind: ActivityExtraFilterKind) {
   switch (kind) {
     case 'author':
       explorer.setAuthorFilters([])
@@ -536,7 +615,7 @@ function clearExplorerExtraFilterSelection(kind: ExplorerExtraFilterKind) {
   }
 }
 
-function extraFilterChipLabel(kind: ExplorerExtraFilterKind) {
+function extraFilterChipLabel(kind: ActivityExtraFilterKind) {
   switch (kind) {
     case 'author':
       if (explorer.selectedAuthorIds.length === 1) {
@@ -561,7 +640,7 @@ function extraFilterChipLabel(kind: ExplorerExtraFilterKind) {
   }
 }
 
-function extraFilterSelectionCount(kind: ExplorerExtraFilterKind) {
+function extraFilterSelectionCount(kind: ActivityExtraFilterKind) {
   switch (kind) {
     case 'author':
       return explorer.selectedAuthorIds.length
@@ -574,11 +653,11 @@ function extraFilterSelectionCount(kind: ExplorerExtraFilterKind) {
   }
 }
 
-function extraFilterMenuLabel(kind: ExplorerExtraFilterKind) {
-  return EXPLORER_EXTRA_FILTER_OPTIONS.find((option) => option.value === kind)?.label ?? 'Filter'
+function extraFilterMenuLabel(kind: ActivityExtraFilterKind) {
+  return ACTIVITY_EXTRA_FILTER_OPTIONS.find((option) => option.value === kind)?.label ?? 'Filter'
 }
 
-function extraFilterMenuOptions(kind: ExplorerExtraFilterKind) {
+function extraFilterMenuOptions(kind: ActivityExtraFilterKind) {
   switch (kind) {
     case 'author':
       return (dashboard.bootstrap?.authors ?? []).map((author) => ({
@@ -603,7 +682,7 @@ function extraFilterMenuOptions(kind: ExplorerExtraFilterKind) {
   }
 }
 
-function isExtraFilterOptionSelected(kind: ExplorerExtraFilterKind, value: string) {
+function isExtraFilterOptionSelected(kind: ActivityExtraFilterKind, value: string) {
   switch (kind) {
     case 'author':
       return explorer.selectedAuthorIds.includes(value)
@@ -616,7 +695,7 @@ function isExtraFilterOptionSelected(kind: ExplorerExtraFilterKind, value: strin
   }
 }
 
-function toggleExtraFilterOption(kind: ExplorerExtraFilterKind, value: string) {
+function toggleExtraFilterOption(kind: ActivityExtraFilterKind, value: string) {
   switch (kind) {
     case 'author':
       explorer.toggleAuthorFilter(value)
@@ -650,7 +729,8 @@ function updateToolbarOverflow() {
     overflowedToolbarKeys.value = [
       ...(isContributorsRoute.value ? ['metric'] : []),
       'date',
-      ...((isExplorerRoute.value || isContributorsRoute.value) ? ['repo'] : []),
+      ...(usesSharedFilterToolbar.value ? ['repo'] : []),
+      ...(isExplorerRoute.value ? ['secondary'] : []),
       ...explorer.visibleExtraFilterKinds.map((kind) => `chip-${kind}`),
       'add-filter',
     ]
@@ -666,7 +746,8 @@ function updateToolbarOverflow() {
   const optionalKeys = [
     ...(isContributorsRoute.value ? ['metric'] : []),
     'date',
-    ...((isExplorerRoute.value || isContributorsRoute.value) ? ['repo'] : []),
+    ...(usesSharedFilterToolbar.value ? ['repo'] : []),
+    ...(isExplorerRoute.value ? ['secondary'] : []),
     ...explorer.visibleExtraFilterKinds.map((kind) => `chip-${kind}`),
     'add-filter',
   ]
@@ -685,7 +766,7 @@ function updateToolbarOverflow() {
   overflowedToolbarKeys.value = nextOverflowed
 }
 
-function applyExplorerRangePreset(preset: Exclude<ExplorerRangePreset, 'custom'>) {
+function applyExplorerRangePreset(preset: Exclude<ActivityRangePreset, 'custom'>) {
   explorer.setRangePreset(preset)
   closeExplorerMenus()
 }
@@ -728,11 +809,6 @@ onMounted(() => {
   sidebarCollapsed.value = window.localStorage.getItem('code-flux-v2-sidebar-collapsed') === 'true'
   const stored = Number(window.localStorage.getItem('code-flux-v2-sidebar-width') ?? '')
   if (Number.isFinite(stored) && stored >= 220 && stored <= 400) expandedSidebarWidth.value = stored
-  const storedCodebaseExpanded = window.localStorage.getItem('code-flux-v2-codebase-nav-expanded')
-  if (storedCodebaseExpanded === 'true' || storedCodebaseExpanded === 'false') {
-    codebaseNavExpanded.value = storedCodebaseExpanded === 'true'
-  }
-  codebaseNavExpanded.value = isCodebaseRoute.value
   void initialize()
   document.addEventListener('click', handleDocumentPointer)
   document.addEventListener('keydown', handleDocumentKeydown)
@@ -759,12 +835,13 @@ watch(usesSharedFilterToolbar, (isRoute) => {
 watch(
   () => route.name,
   () => {
+    navigation.syncRoute(route)
     closeExplorerMenus()
-    codebaseNavExpanded.value = isCodebaseRoute.value
     void nextTick(() => {
       updateToolbarOverflow()
     })
   },
+  { immediate: true },
 )
 
 watch(
@@ -776,6 +853,8 @@ watch(
     explorer.repoLabel,
     explorer.groupByLabel,
     explorer.chartStyleLabel,
+    explorer.compareModeLabel,
+    explorer.compareReferenceLabel ?? '',
     explorer.visibleExtraFilterKinds.join(','),
     explorer.selectedAuthorIds.join(','),
     explorer.selectedLanguages.join(','),
@@ -797,7 +876,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'app-shell--collapsed': sidebarCollapsed }" :style="shellStyle">
+  <div
+    class="app-shell"
+    :class="{
+      'app-shell--collapsed': sidebarCollapsed,
+      'app-shell--settings': isSettingsRoute,
+    }"
+    :style="shellStyle"
+  >
     <div class="sidebar-background" data-testid="app-sidebar-background" aria-hidden="true" />
 
     <aside class="sidebar" data-testid="app-sidebar">
@@ -806,7 +892,7 @@ onBeforeUnmount(() => {
         <!-- Settings nav swap -->
         <template v-if="isSettingsRoute">
           <nav class="sidebar-menu">
-            <button class="sidebar-item" type="button" @click="router.back()">
+            <button class="sidebar-item" type="button" @click="goBackToApp">
               <ChevronLeft class="sidebar-icon" :size="15" />
               <span class="sidebar-item__label">Back to app</span>
             </button>
@@ -859,41 +945,15 @@ onBeforeUnmount(() => {
               <span class="sidebar-item__label">Activity</span>
             </RouterLink>
 
-            <div class="sidebar-tree">
-              <button
-                class="sidebar-item sidebar-item--branch"
-                :class="{ 'sidebar-item--active': isCodebaseRoute }"
-                data-testid="nav-codebase"
-                type="button"
-                @click="handleCodebaseNavClick"
-              >
-                <GitBranch class="sidebar-icon" :size="15" />
-                <span class="sidebar-item__label">Codebase</span>
-                <ChevronDown
-                  class="sidebar-tree__caret"
-                  :class="{ 'sidebar-tree__caret--open': codebaseNavExpanded }"
-                  :size="14"
-                />
-              </button>
-
-              <div
-                v-if="codebaseNavExpanded && enabledCodebaseRepos.length"
-                class="sidebar-tree__children"
-                data-testid="nav-codebase-children"
-              >
-                <RouterLink
-                  v-for="repo in enabledCodebaseRepos"
-                  :key="repo.id"
-                  class="sidebar-item sidebar-item--child"
-                  :class="{ 'sidebar-item--active': route.name === 'codebase-repo' && route.params.repoId === repo.id }"
-                  :data-testid="`nav-codebase-repo-${repo.id}`"
-                  :to="{ name: 'codebase-repo', params: { repoId: repo.id } }"
-                >
-                  <span class="sidebar-item__bullet" aria-hidden="true" />
-                  <span class="sidebar-item__label">{{ repo.displayName }}</span>
-                </RouterLink>
-              </div>
-            </div>
+            <RouterLink
+              class="sidebar-item"
+              :class="{ 'sidebar-item--active': isCodebaseRoute }"
+              :to="{ name: 'codebase' }"
+              data-testid="nav-codebase"
+            >
+              <GitBranch class="sidebar-icon" :size="15" />
+              <span class="sidebar-item__label">Codebase</span>
+            </RouterLink>
 
             <RouterLink
               class="sidebar-item"
@@ -1085,6 +1145,17 @@ onBeforeUnmount(() => {
                 class="content-chrome__pill"
                 type="button"
                 aria-haspopup="menu"
+                :aria-expanded="explorerCompareMenuOpen"
+                @click="toggleExplorerCompareMenu"
+              >
+                <SlidersHorizontal :size="13" />
+                <span>{{ compareToolbarLabel }}</span>
+                <ChevronDown :size="13" />
+              </button>
+              <button
+                class="content-chrome__pill"
+                type="button"
+                aria-haspopup="menu"
                 :aria-expanded="explorerDisplayMenuOpen"
                 aria-controls="explorer-display-menu"
                 @click="toggleExplorerDisplayMenu"
@@ -1152,6 +1223,11 @@ onBeforeUnmount(() => {
                   <ChevronDown :size="13" />
                 </div>
                 <div class="content-chrome__pill">
+                  <SlidersHorizontal :size="13" />
+                  <span>{{ compareToolbarLabel }}</span>
+                  <ChevronDown :size="13" />
+                </div>
+                <div class="content-chrome__pill">
                   <BarChart3 :size="13" />
                   <span>Display</span>
                   <ChevronDown :size="13" />
@@ -1166,7 +1242,7 @@ onBeforeUnmount(() => {
             :style="{ top: explorerMetricMenuStyle.top, left: explorerMetricMenuStyle.left }"
           >
               <button
-                v-for="option in isContributorsRoute ? CONTRIBUTOR_METRIC_OPTIONS : EXPLORER_METRIC_OPTIONS"
+                v-for="option in isContributorsRoute ? CONTRIBUTOR_METRIC_OPTIONS : ACTIVITY_METRIC_OPTIONS"
                 :key="option.value"
                 class="content-chrome__menu-option"
                 role="menuitemradio"
@@ -1178,6 +1254,98 @@ onBeforeUnmount(() => {
                 <span v-else class="content-chrome__menu-check-placeholder" />
                 {{ option.label }}
               </button>
+          </div>
+          <div
+            v-if="explorerCompareMenuOpen"
+            class="content-chrome__explorer-menu"
+            role="menu"
+            :style="{ top: explorerCompareMenuStyle.top, left: explorerCompareMenuStyle.left }"
+          >
+            <button
+              class="content-chrome__menu-option"
+              role="menuitemradio"
+              :aria-checked="!explorer.compareEnabled"
+              type="button"
+              @click="disableExplorerCompare"
+            >
+              <Check v-if="!explorer.compareEnabled" :size="12" />
+              <span v-else class="content-chrome__menu-check-placeholder" />
+              Off
+            </button>
+            <button
+              v-for="option in ACTIVITY_COMPARE_PRESET_OPTIONS"
+              :key="option.value"
+              class="content-chrome__menu-option"
+              role="menuitemradio"
+              :aria-checked="explorer.compareMode === option.value"
+              type="button"
+              @click="applyExplorerComparePreset(option.value)"
+            >
+              <Check v-if="explorer.compareMode === option.value" :size="12" />
+              <span v-else class="content-chrome__menu-check-placeholder" />
+              {{ option.label }}
+            </button>
+            <div class="content-chrome__menu-divider" />
+            <div class="content-chrome__menu-section">
+              <span class="content-chrome__menu-section-title">
+                Custom past date
+                <Check v-if="explorer.compareMode === 'custom_anchor_date'" :size="12" />
+              </span>
+              <label class="content-chrome__menu-field">
+                <span>Reference end date</span>
+                <input v-model="explorerCompareAnchorDraft" type="date" />
+              </label>
+              <p class="content-chrome__menu-note">
+                Uses the same {{ explorer.rangeDays }}-day span and must end before {{ explorer.effectiveDateRange.from }}.
+              </p>
+              <button
+                class="content-chrome__menu-apply"
+                type="button"
+                :disabled="!compareAnchorDraftValid"
+                @click="applyExplorerCompareAnchor"
+              >
+                Use custom past date
+              </button>
+            </div>
+            <div class="content-chrome__menu-divider" />
+            <div class="content-chrome__menu-section">
+              <span class="content-chrome__menu-section-title">
+                Custom date range
+                <Check v-if="explorer.compareMode === 'custom_range'" :size="12" />
+              </span>
+              <label class="content-chrome__menu-field">
+                <span>From</span>
+                <input v-model="explorerCompareFromDraft" type="date" />
+              </label>
+              <label class="content-chrome__menu-field">
+                <span>To</span>
+                <input v-model="explorerCompareToDraft" type="date" />
+              </label>
+              <p class="content-chrome__menu-note">
+                Must match the current {{ explorer.rangeDays }}-day span and end before {{ explorer.effectiveDateRange.from }}.
+              </p>
+              <button
+                class="content-chrome__menu-apply"
+                type="button"
+                :disabled="!compareRangeDraftValid"
+                @click="applyExplorerCompareCustomRange"
+              >
+                Use custom date range
+              </button>
+            </div>
+            <div class="content-chrome__menu-divider" />
+            <div class="content-chrome__menu-section">
+              <span class="content-chrome__menu-section-title">Overlay</span>
+              <button
+                class="content-chrome__menu-option"
+                type="button"
+                :disabled="!explorer.compareEnabled || !explorer.compareData"
+                @click="explorer.compareOverlayVisible = !explorer.compareOverlayVisible"
+              >
+                <component :is="explorer.compareOverlayVisible ? EyeOff : Eye" :size="12" />
+                {{ explorer.compareOverlayVisible ? 'Hide overlay' : 'Show overlay' }}
+              </button>
+            </div>
           </div>
           <div
             v-if="explorerTimeMenuOpen"
@@ -1231,33 +1399,35 @@ onBeforeUnmount(() => {
             :style="{ top: explorerRepoMenuStyle.top, left: explorerRepoMenuStyle.left }"
           >
             <button
+              v-if="!isCodebaseRoute"
               class="content-chrome__menu-option"
               role="menuitemradio"
-              :aria-checked="explorer.selectedRepoIds.length === 0"
+              :aria-checked="!explorer.selectedRepoIds.length"
               type="button"
-              @click="explorer.setRepoFilters([]); closeExplorerMenus()"
+              @click="clearRepoFiltersForCurrentRoute()"
             >
-              <Check v-if="explorer.selectedRepoIds.length === 0" :size="12" />
+              <Check v-if="!explorer.selectedRepoIds.length" :size="12" />
               <span v-else class="content-chrome__menu-check-placeholder" />
               All repositories
             </button>
             <button
-              v-for="repo in dashboard.bootstrap?.repos ?? []"
+              v-for="repo in (dashboard.bootstrap?.repos ?? []).filter((item) => item.enabled)"
               :key="repo.id"
               class="content-chrome__menu-option"
-              role="menuitemcheckbox"
+              :role="isCodebaseRoute ? 'menuitemradio' : 'menuitemcheckbox'"
               :aria-checked="explorer.selectedRepoIds.includes(repo.id)"
               type="button"
-              @click="explorer.toggleRepoFilter(repo.id)"
+              @click="selectRepoFilterForCurrentRoute(repo.id)"
             >
               <Check v-if="explorer.selectedRepoIds.includes(repo.id)" :size="12" />
               <span v-else class="content-chrome__menu-check-placeholder" />
               {{ repo.displayName }}
             </button>
             <button
+              v-if="!isCodebaseRoute"
               class="content-chrome__menu-reset"
               type="button"
-              @click="explorer.setRepoFilters([]); closeExplorerMenus()"
+              @click="clearRepoFiltersForCurrentRoute()"
             >
               Clear selections
             </button>
@@ -1270,7 +1440,7 @@ onBeforeUnmount(() => {
             :style="{ top: explorerGroupMenuStyle.top, left: explorerGroupMenuStyle.left }"
           >
             <button
-              v-for="option in EXPLORER_GROUP_BY_OPTIONS"
+              v-for="option in ACTIVITY_GROUP_BY_OPTIONS"
               :key="option.value"
               class="content-chrome__menu-option"
               role="menuitemradio"
@@ -1293,7 +1463,7 @@ onBeforeUnmount(() => {
             <div class="content-chrome__menu-section">
               <span class="content-chrome__menu-section-title">Chart type</span>
               <button
-                v-for="option in EXPLORER_CHART_STYLE_OPTIONS"
+                v-for="option in ACTIVITY_CHART_STYLE_OPTIONS"
                 :key="option.value"
                 class="content-chrome__menu-option"
                 role="menuitemradio"
@@ -1474,7 +1644,7 @@ onBeforeUnmount(() => {
               </button>
               <div v-if="isExplorerOverflowPanelOpen('metric')" class="content-chrome__menu-accordion-body">
                 <button
-                  v-for="option in EXPLORER_METRIC_OPTIONS"
+                  v-for="option in ACTIVITY_METRIC_OPTIONS"
                   :key="option.value"
                   class="content-chrome__menu-option"
                   role="menuitemradio"
@@ -1555,33 +1725,35 @@ onBeforeUnmount(() => {
               </button>
               <div v-if="isExplorerOverflowPanelOpen('repo')" class="content-chrome__menu-accordion-body">
                 <button
+                  v-if="!isCodebaseRoute"
                   class="content-chrome__menu-option"
                   role="menuitemradio"
-                  :aria-checked="explorer.selectedRepoIds.length === 0"
+                  :aria-checked="!explorer.selectedRepoIds.length"
                   type="button"
-                  @click="explorer.setRepoFilters([])"
+                  @click="clearRepoFiltersForCurrentRoute()"
                 >
-                  <Check v-if="explorer.selectedRepoIds.length === 0" :size="12" />
+                  <Check v-if="!explorer.selectedRepoIds.length" :size="12" />
                   <span v-else class="content-chrome__menu-check-placeholder" />
                   All repositories
                 </button>
                 <button
-                  v-for="repo in dashboard.bootstrap?.repos ?? []"
+                  v-for="repo in (dashboard.bootstrap?.repos ?? []).filter((item) => item.enabled)"
                   :key="repo.id"
                   class="content-chrome__menu-option"
-                  role="menuitemcheckbox"
+                  :role="isCodebaseRoute ? 'menuitemradio' : 'menuitemcheckbox'"
                   :aria-checked="explorer.selectedRepoIds.includes(repo.id)"
                   type="button"
-                  @click="explorer.toggleRepoFilter(repo.id)"
+                  @click="selectRepoFilterForCurrentRoute(repo.id)"
                 >
                   <Check v-if="explorer.selectedRepoIds.includes(repo.id)" :size="12" />
                   <span v-else class="content-chrome__menu-check-placeholder" />
                   {{ repo.displayName }}
                 </button>
                 <button
+                  v-if="!isCodebaseRoute"
                   class="content-chrome__menu-reset"
                   type="button"
-                  @click="explorer.setRepoFilters([])"
+                  @click="clearRepoFiltersForCurrentRoute()"
                 >
                   Clear selections
                 </button>
@@ -1687,7 +1859,7 @@ onBeforeUnmount(() => {
               </button>
               <div v-if="isExplorerOverflowPanelOpen('group')" class="content-chrome__menu-accordion-body">
                 <button
-                  v-for="option in EXPLORER_GROUP_BY_OPTIONS"
+                  v-for="option in ACTIVITY_GROUP_BY_OPTIONS"
                   :key="option.value"
                   class="content-chrome__menu-option"
                   role="menuitemradio"
@@ -1698,6 +1870,92 @@ onBeforeUnmount(() => {
                   <Check v-if="explorer.groupBy === option.value" :size="12" />
                   <span v-else class="content-chrome__menu-check-placeholder" />
                   {{ option.label }}
+                </button>
+              </div>
+            </div>
+            <div class="content-chrome__menu-accordion">
+              <button
+                class="content-chrome__menu-option content-chrome__menu-option--accordion"
+                type="button"
+                :aria-expanded="isExplorerOverflowPanelOpen('compare')"
+                @click="toggleExplorerOverflowPanel('compare')"
+              >
+                <span class="content-chrome__menu-option-main">
+                  <SlidersHorizontal :size="12" />
+                  {{ compareToolbarLabel }}
+                </span>
+                <ChevronDown :size="12" class="content-chrome__menu-caret" :class="{ 'is-open': isExplorerOverflowPanelOpen('compare') }" />
+              </button>
+              <div v-if="isExplorerOverflowPanelOpen('compare')" class="content-chrome__menu-accordion-body">
+                <button
+                  class="content-chrome__menu-option"
+                  role="menuitemradio"
+                  :aria-checked="!explorer.compareEnabled"
+                  type="button"
+                  @click="disableExplorerCompare"
+                >
+                  <Check v-if="!explorer.compareEnabled" :size="12" />
+                  <span v-else class="content-chrome__menu-check-placeholder" />
+                  Off
+                </button>
+                <button
+                  v-for="option in ACTIVITY_COMPARE_PRESET_OPTIONS"
+                  :key="`overflow-${option.value}`"
+                  class="content-chrome__menu-option"
+                  role="menuitemradio"
+                  :aria-checked="explorer.compareMode === option.value"
+                  type="button"
+                  @click="applyExplorerComparePreset(option.value)"
+                >
+                  <Check v-if="explorer.compareMode === option.value" :size="12" />
+                  <span v-else class="content-chrome__menu-check-placeholder" />
+                  {{ option.label }}
+                </button>
+                <div class="content-chrome__menu-divider" />
+                <div class="content-chrome__menu-section">
+                  <span class="content-chrome__menu-section-title">Custom past date</span>
+                  <label class="content-chrome__menu-field">
+                    <span>Reference end date</span>
+                    <input v-model="explorerCompareAnchorDraft" type="date" />
+                  </label>
+                  <button
+                    class="content-chrome__menu-apply"
+                    type="button"
+                    :disabled="!compareAnchorDraftValid"
+                    @click="applyExplorerCompareAnchor"
+                  >
+                    Use custom past date
+                  </button>
+                </div>
+                <div class="content-chrome__menu-divider" />
+                <div class="content-chrome__menu-section">
+                  <span class="content-chrome__menu-section-title">Custom date range</span>
+                  <label class="content-chrome__menu-field">
+                    <span>From</span>
+                    <input v-model="explorerCompareFromDraft" type="date" />
+                  </label>
+                  <label class="content-chrome__menu-field">
+                    <span>To</span>
+                    <input v-model="explorerCompareToDraft" type="date" />
+                  </label>
+                  <button
+                    class="content-chrome__menu-apply"
+                    type="button"
+                    :disabled="!compareRangeDraftValid"
+                    @click="applyExplorerCompareCustomRange"
+                  >
+                    Use custom date range
+                  </button>
+                </div>
+                <div class="content-chrome__menu-divider" />
+                <button
+                  class="content-chrome__menu-option"
+                  type="button"
+                  :disabled="!explorer.compareEnabled || !explorer.compareData"
+                  @click="explorer.compareOverlayVisible = !explorer.compareOverlayVisible"
+                >
+                  <component :is="explorer.compareOverlayVisible ? EyeOff : Eye" :size="12" />
+                  {{ explorer.compareOverlayVisible ? 'Hide overlay' : 'Show overlay' }}
                 </button>
               </div>
             </div>
@@ -1718,7 +1976,7 @@ onBeforeUnmount(() => {
                 <div class="content-chrome__menu-section">
                   <span class="content-chrome__menu-section-title">Chart type</span>
                   <button
-                    v-for="option in EXPLORER_CHART_STYLE_OPTIONS"
+                    v-for="option in ACTIVITY_CHART_STYLE_OPTIONS"
                     :key="option.value"
                     class="content-chrome__menu-option"
                     role="menuitemradio"
@@ -1771,6 +2029,6 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <DrilldownDrawer />
+    <DrilldownDrawer v-if="!isSettingsRoute" />
   </div>
 </template>

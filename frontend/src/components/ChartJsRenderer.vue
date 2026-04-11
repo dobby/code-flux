@@ -15,6 +15,7 @@ import {
 } from 'chart.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getSeriesColor } from '../lib/chart'
+import { useAppearanceStore } from '../stores/appearance'
 import type { AnalyticsCompareResponse, AnalyticsPoint, AnalyticsQueryResponse, Annotation } from '../types/api'
 
 Chart.register(CategoryScale, LinearScale, PointElement, LineElement, LineController, Tooltip, Legend, Filler)
@@ -35,6 +36,7 @@ const emit = defineEmits<{
   (event: 'day-select', day: string): void
 }>()
 
+const appearance = useAppearanceStore()
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 let chartInstance: Chart<'line'> | null = null
 
@@ -183,6 +185,7 @@ function buildConfiguration(): ChartConfiguration<'line'> {
       datasets,
     },
     options: {
+      animation: appearance.animateCharts ? { duration: 250 } : false,
       responsive: true,
       maintainAspectRatio: false,
       interaction: {

@@ -23,9 +23,11 @@ import {
 } from 'lucide-vue-next'
 import { buildChartOption, getSeriesColor } from '../lib/chart'
 import { useDashboardStore } from '../stores/dashboard'
+import { useAppearanceStore } from '../stores/appearance'
 import type { Annotation, AnnotationType, ChartLibrary, GroupBy, Metric } from '../types/api'
 
 const store = useDashboardStore()
+const appearance = useAppearanceStore()
 const annotationDialog = ref<HTMLDialogElement | null>(null)
 const filterTrigger = ref<HTMLElement | null>(null)
 const filterPopover = ref<HTMLElement | null>(null)
@@ -97,6 +99,7 @@ const chartOption = computed(() => {
     legendVisible: store.legendVisible,
     anonymizeAuthors: anonymizeAuthors.value,
     authorLabelById: Object.fromEntries(authorAliasMap.value),
+    animateCharts: appearance.animateCharts,
   })
 })
 

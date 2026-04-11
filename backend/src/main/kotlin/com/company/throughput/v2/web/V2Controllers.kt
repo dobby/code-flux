@@ -1,6 +1,7 @@
 package com.company.throughput.v2.web
 
 import com.company.throughput.v2.model.AddPageWidgetRequest
+import com.company.throughput.v2.model.ActivityCompareRequest
 import com.company.throughput.v2.model.BootstrapV2Response
 import com.company.throughput.v2.model.CreateAnnotationV2Request
 import com.company.throughput.v2.model.CreatePageRequest
@@ -25,6 +26,7 @@ import com.company.throughput.v2.model.UpdatePageRequest
 import com.company.throughput.v2.model.UpdatePageWidgetRequest
 import com.company.throughput.v2.model.UpdateWidgetDefinitionRequest
 import com.company.throughput.v2.service.AnnotationV2Service
+import com.company.throughput.v2.service.ActivityCompareService
 import com.company.throughput.v2.service.CodebaseService
 import com.company.throughput.v2.service.DayDrilldownService
 import com.company.throughput.v2.service.JiraClient
@@ -243,6 +245,15 @@ class DrilldownV2Controller(
 ) {
     @PostMapping("/day")
     fun day(@Valid @RequestBody request: DayDrilldownRequest) = dayDrilldownService.load(request)
+}
+
+@RestController
+@RequestMapping("/api/v2/activity")
+class ActivityV2Controller(
+    private val activityCompareService: ActivityCompareService,
+) {
+    @PostMapping("/compare")
+    fun compare(@Valid @RequestBody request: ActivityCompareRequest) = activityCompareService.compare(request)
 }
 
 @RestController

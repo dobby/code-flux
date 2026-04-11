@@ -90,7 +90,8 @@ class CodebaseService(
         )
             .param("repoId", repoId)
             .query { rs, _ -> rs.getString("latest_snapshot_date")?.let(LocalDate::parse) }
-            .single()
+            .optional()
+            .orElse(null)
 
     private fun loadInventoryRows(request: CodebaseStructureRequest): List<InventoryRow> {
         val where = mutableListOf<String>()

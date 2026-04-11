@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { executeWidgetQuery } from '../api/workspace'
 import type { FilterSpec, QueryExecutionResponse, WidgetQuerySpec } from '../types/workspace'
-import { useExplorerStore } from './explorer'
+import { useActivityStore } from './activity'
 
 export type ContributorMetric = 'net_lines' | 'lines_added' | 'commits_count' | 'files_changed_count'
 
@@ -71,7 +71,7 @@ function contributorMetricShortLabel(metric: ContributorMetric) {
 }
 
 export const useContributorsStore = defineStore('contributors', () => {
-  const explorer = useExplorerStore()
+  const explorer = useActivityStore()
 
   const metric = ref<ContributorMetric>('net_lines')
   const leaderboard = ref<QueryExecutionResponse | null>(null)

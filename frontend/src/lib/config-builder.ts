@@ -170,6 +170,13 @@ export function serializeConfigToYaml(config: EditableDashboardConfig): string {
   lines.push('syncWindow:')
   lines.push(`${indent(1)}from: ${yamlScalar(config.syncWindow.from)}`)
   lines.push(`${indent(1)}to: ${yamlScalar(config.syncWindow.to)}`)
+  lines.push('')
+
+  lines.push('appearance:')
+  lines.push(`${indent(1)}mode: ${yamlScalar(config.appearance.mode)}`)
+  lines.push(`${indent(1)}accent: ${yamlScalar(config.appearance.accent)}`)
+  lines.push(`${indent(1)}animateCharts: ${yamlScalar(config.appearance.animateCharts)}`)
+  lines.push(`${indent(1)}compactRows: ${yamlScalar(config.appearance.compactRows)}`)
 
   return `${lines.join('\n')}\n`
 }

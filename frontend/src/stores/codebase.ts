@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { executeWidgetQuery, getCodebaseStructure } from '../api/workspace'
 import type { CodebaseStructureResponse, FilterSpec, QueryExecutionResponse, WidgetQuerySpec } from '../types/workspace'
-import { useExplorerStore } from './explorer'
+import { useActivityStore } from './activity'
 
 export type CodebaseGrowthPoint = {
   day: string
@@ -33,7 +33,7 @@ function readNumber(value: unknown) {
 }
 
 export const useCodebaseStore = defineStore('codebase', () => {
-  const explorer = useExplorerStore()
+  const explorer = useActivityStore()
 
   const snapshotSeries = ref<QueryExecutionResponse | null>(null)
   const activitySeries = ref<QueryExecutionResponse | null>(null)

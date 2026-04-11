@@ -42,6 +42,8 @@ data class EditableDashboardConfig(
     val uiDefaults: UiDefaultsProperties = UiDefaultsProperties(),
     @field:Valid
     val syncWindow: SyncWindowProperties = SyncWindowProperties(),
+    @field:Valid
+    val appearance: AppearanceProperties = AppearanceProperties(),
 )
 
 @Service
@@ -139,6 +141,14 @@ class ConfigFileService(
         requireSupportedChartLibrary(
             value = document.uiDefaults.defaultChartLibrary,
             label = "uiDefaults.defaultChartLibrary",
+        )
+        requireSupportedAppearanceMode(
+            value = document.appearance.mode,
+            label = "appearance.mode",
+        )
+        requireSupportedAccentColor(
+            value = document.appearance.accent,
+            label = "appearance.accent",
         )
         document.authors.include.forEach { author ->
             require(author.emails.isNotEmpty() || author.names.isNotEmpty()) {

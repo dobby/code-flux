@@ -30,6 +30,7 @@ class DashboardConfigFactory {
         classificationProperties: ClassificationProperties,
         uiDefaultsProperties: UiDefaultsProperties,
         syncWindowProperties: SyncWindowProperties = SyncWindowProperties(),
+        appearanceProperties: AppearanceProperties = AppearanceProperties(),
     ): ResolvedDashboardConfig {
         val dataDir = Paths.get(appProperties.dataDir).toAbsolutePath().normalize()
         Files.createDirectories(dataDir)
@@ -104,6 +105,14 @@ class DashboardConfigFactory {
             value = uiDefaultsProperties.defaultChartLibrary,
             label = "uiDefaults.defaultChartLibrary",
         )
+        requireSupportedAppearanceMode(
+            value = appearanceProperties.mode,
+            label = "appearance.mode",
+        )
+        requireSupportedAccentColor(
+            value = appearanceProperties.accent,
+            label = "appearance.accent",
+        )
 
         return ResolvedDashboardConfig(
             app = appProperties.copy(dataDir = dataDir.toString()),
@@ -127,6 +136,7 @@ class DashboardConfigFactory {
                 from = syncWindowProperties.from,
                 to = syncWindowProperties.to,
             ),
+            appearance = appearanceProperties,
         )
     }
 

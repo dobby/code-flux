@@ -11,6 +11,7 @@ data class ResolvedDashboardConfig(
     val classification: ResolvedClassificationProperties,
     val uiDefaults: UiDefaultsProperties,
     val syncWindow: ResolvedSyncWindowProperties,
+    val appearance: AppearanceProperties,
 )
 
 data class ResolvedGitProperties(

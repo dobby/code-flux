@@ -4,6 +4,8 @@ import type {
   AnalyticsQueryRequest,
   AnalyticsQueryResponse,
   Annotation,
+  AppearanceConfig,
+  AppearanceConfigResponse,
   BootstrapResponse,
   ConfigBuilderResponse,
   ConfigFileResponse,
@@ -64,6 +66,17 @@ export function updateConfigBuilder(config: EditableDashboardConfig) {
   return request<ConfigBuilderResponse>('/api/config/builder', {
     method: 'PUT',
     body: JSON.stringify(config),
+  })
+}
+
+export function getAppearanceConfig() {
+  return request<AppearanceConfigResponse>('/api/config/appearance')
+}
+
+export function updateAppearanceConfig(appearance: AppearanceConfig) {
+  return request<AppearanceConfigResponse>('/api/config/appearance', {
+    method: 'PUT',
+    body: JSON.stringify(appearance),
   })
 }
 

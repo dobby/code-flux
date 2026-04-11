@@ -165,7 +165,7 @@ test.describe('v2 workspace', () => {
     const routes = [
       { path: '/activity', expected: /\/activity\/?$/ },
       { path: '/explorer', expected: /\/explorer\/?$/ },
-      { path: '/codebase', expected: /\/codebase(\/[^/]+)?\/?$/ },
+      { path: '/codebase', expected: /\/codebase\/?$/ },
       { path: '/contributors', expected: /\/contributors\/?$/ },
       { path: '/widgets', expected: /\/widgets\/?$/ },
       { path: '/widgets/new', expected: /\/widgets\/new\/?$/ },
@@ -215,18 +215,42 @@ test.describe('v2 workspace', () => {
   })
 
   test('activity supports cumulative net and commit detail navigation', async ({ page }) => {
-    await page.goto('/activity?range=90d&group=none')
+    await page.goto('/activity?range=90d&group=none&metric=cumulative_net')
     await ensureLegacySync(page)
-    await page.goto('/activity?range=90d&group=none')
+    await page.goto('/activity?range=90d&group=none&metric=cumulative_net')
 
     await expect(page.getByTestId('app-header')).toContainText('Activity')
     await expect(page.getByText(/selected/i).first()).toBeVisible()
 
-    await page.getByRole('button', { name: /Commit Count/i }).click()
-    await page.getByRole('menuitemradio', { name: /^Cumulative Net$/ }).click()
-
     await expect(page).toHaveURL(/metric=cumulative_net/)
     await expect(page.locator('.explorer-chart__title')).toHaveText('Cumulative Net')
+
+    await page.getByRole('button', { name: /^Compare$/ }).click()
+    const compareMenu = page.locator('.content-chrome__explorer-menu').filter({ hasText: 'Custom past date' }).last()
+    await expect(compareMenu).toBeVisible()
+
+    await compareMenu.getByRole('menuitemradio', { name: /^Previous period$/ }).click()
+    await expect(page).toHaveURL(/compareMode=previous_period/)
+    await expect(page.locator('.explorer-chart__compare-summary')).toContainText('Previous period')
+
+    const compareDates = buildActivityCompareDates(90)
+    await page.getByRole('button', { name: /Previous period/i }).click()
+    await expect(compareMenu).toBeVisible()
+    await compareMenu.locator('input[type="date"]').nth(0).fill(compareDates.anchorDate)
+    await compareMenu.getByRole('button', { name: 'Use custom past date' }).click()
+    await expect(page).toHaveURL(new RegExp(`compareMode=custom_anchor_date.*compareAnchor=${compareDates.anchorDate}`))
+    await expect(page.locator('.explorer-chart__compare-summary')).toContainText('Custom past date')
+
+    await page.getByRole('button', { name: /Custom past date/i }).click()
+    await expect(compareMenu).toBeVisible()
+    await compareMenu.locator('input[type="date"]').nth(1).fill(compareDates.customRange.from)
+    await compareMenu.locator('input[type="date"]').nth(2).fill(compareDates.customRange.to)
+    await compareMenu.getByRole('button', { name: 'Use custom date range' }).click()
+    await expect(page).toHaveURL(new RegExp(
+      `compareMode=custom_range.*compareFrom=${compareDates.customRange.from}.*compareTo=${compareDates.customRange.to}`,
+    ))
+    await expect(page.locator('.explorer-chart__compare-summary')).toContainText('Custom date range')
+
     await expect(page.getByRole('button', { name: /Open full detail/i })).toBeVisible()
 
     await page.getByRole('button', { name: /Open full detail/i }).click()
@@ -275,16 +299,11 @@ test.describe('v2 workspace', () => {
     expect(repos.length).toBeGreaterThan(0)
 
     await page.getByTestId('nav-codebase').click()
-    await expect(page).toHaveURL(new RegExp(`/codebase/${repos[0].id}$`))
-    await expect(page.getByTestId('nav-codebase-children')).toBeVisible()
-    await expect(page.getByTestId(`nav-codebase-repo-${repos[0].id}`)).toBeVisible()
-    await expect(page.getByTestId('codebase-shell')).toContainText(repos[0].displayName)
+    await expect(page).toHaveURL(/\/codebase$/)
+    await expect(page.getByTestId('nav-codebase-children')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: new RegExp(repos[0].displayName) })).toBeVisible()
     await expect(page.getByRole('button', { name: /Last 14 days/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /^\+ Filter/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /All repositories/i })).toHaveCount(0)
-    await expect(page.getByTestId('codebase-filter-semantics')).toContainText(
-      'Author filters do not alter the current tree; they only change Net activity sizing.',
-    )
 
     await page.getByRole('button', { name: /Last 14 days/i }).click()
     await page.getByRole('menuitemradio', { name: /^Last 90 days$/ }).click()
@@ -311,16 +330,11 @@ test.describe('v2 workspace', () => {
     await firstAuthorOption.click()
     await expect(page.getByTestId('codebase-summary-row')).toContainText('Author:')
 
-    await page.getByTestId('nav-codebase').click()
-    await expect(page.getByTestId('nav-codebase-children')).toHaveCount(0)
-
-    await page.getByTestId('nav-codebase').click()
-    await expect(page.getByTestId('nav-codebase-children')).toBeVisible()
-
     const targetRepo = repos[Math.min(1, repos.length - 1)]
-    await page.getByTestId(`nav-codebase-repo-${targetRepo.id}`).click()
-    await expect(page).toHaveURL(new RegExp(`/codebase/${targetRepo.id}$`))
-    await expect(page.getByTestId('codebase-shell')).toContainText(targetRepo.displayName)
+    await page.getByRole('button', { name: new RegExp(repos[0].displayName) }).click()
+    await page.getByRole('menuitemradio', { name: new RegExp(targetRepo.displayName) }).click()
+    await expect(page).toHaveURL(/\/codebase$/)
+    await expect(page.getByRole('button', { name: new RegExp(targetRepo.displayName) })).toBeVisible()
   })
 
   test('sidebar collapse covers the sidebar while keeping controls fixed', async ({ page }) => {
@@ -528,6 +542,36 @@ async function ensureCurrentSnapshots(page: Page) {
     }),
     { timeout: 30_000 },
   ).toBeGreaterThan(0)
+}
+
+function buildActivityCompareDates(spanDays: number) {
+  const today = new Date()
+  const currentFrom = shiftDate(today, -(spanDays - 1))
+  const anchorDate = shiftDate(currentFrom, -7)
+  const customRangeTo = shiftDate(currentFrom, -14)
+  const customRangeFrom = shiftDate(customRangeTo, -(spanDays - 1))
+
+  return {
+    anchorDate: formatDateInput(anchorDate),
+    customRange: {
+      from: formatDateInput(customRangeFrom),
+      to: formatDateInput(customRangeTo),
+    },
+  }
+}
+
+function shiftDate(source: Date, days: number) {
+  const date = new Date(source)
+  date.setDate(date.getDate() + days)
+  return date
+}
+
+function formatDateInput(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
 }
 
 function currentPageId(page: Page) {

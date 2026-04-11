@@ -14,10 +14,12 @@ import {
   formatContributorMetric,
   useContributorsStore,
 } from '../stores/contributors'
-import { useExplorerStore } from '../stores/explorer'
+import { useActivityStore } from '../stores/activity'
+import { useAppearanceStore } from '../stores/appearance'
 
-const explorer = useExplorerStore()
+const explorer = useActivityStore()
 const contributors = useContributorsStore()
+const appearance = useAppearanceStore()
 
 function sampleEvenly<T>(items: T[], count: number) {
   if (items.length <= count) {
@@ -76,7 +78,7 @@ const trendBarValues = computed(() => {
   return sampledDays.map((day, index) => ({
     day,
     value: totals[index],
-    color: index % 2 === 1 ? '#6366f1' : '#cbd5e1',
+    color: index % 2 === 1 ? appearance.accentColor : '#cbd5e1',
   }))
 })
 
@@ -86,7 +88,8 @@ const trendChartOption = computed<EChartsOption>(() => {
 
   return {
     backgroundColor: 'transparent',
-    animationDuration: 250,
+    animation: appearance.animateCharts,
+    animationDuration: appearance.animateCharts ? 250 : 0,
     grid: {
       left: '57%',
       right: 0,
@@ -287,7 +290,7 @@ const summaryTiles = computed(() => [
 }
 
 .contributors-card__header :deep(svg) {
-  color: #6366f1;
+  color: var(--cf-accent);
 }
 
 .contributors-card__surface {

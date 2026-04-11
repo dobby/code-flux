@@ -9,10 +9,24 @@ import org.springframework.validation.annotation.Validated
 import java.time.LocalDate
 
 val supportedChartLibraries = setOf("echarts", "chartjs")
+val supportedAppearanceModes = setOf("system", "light", "dark")
+val supportedAccentColors = setOf("indigo", "blue", "amber")
 
 fun requireSupportedChartLibrary(value: String, label: String) {
     require(value in supportedChartLibraries) {
         "$label must be one of ${supportedChartLibraries.joinToString(", ")}"
+    }
+}
+
+fun requireSupportedAppearanceMode(value: String, label: String) {
+    require(value in supportedAppearanceModes) {
+        "$label must be one of ${supportedAppearanceModes.joinToString(", ")}"
+    }
+}
+
+fun requireSupportedAccentColor(value: String, label: String) {
+    require(value in supportedAccentColors) {
+        "$label must be one of ${supportedAccentColors.joinToString(", ")}"
     }
 }
 
@@ -85,6 +99,17 @@ data class UiDefaultsProperties(
 data class SyncWindowProperties(
     val from: LocalDate? = null,
     val to: LocalDate? = null,
+)
+
+@Validated
+@ConfigurationProperties(prefix = "appearance")
+data class AppearanceProperties(
+    @field:NotBlank
+    val mode: String = "system",
+    @field:NotBlank
+    val accent: String = "indigo",
+    val animateCharts: Boolean = true,
+    val compactRows: Boolean = false,
 )
 
 data class RepoListProperties(

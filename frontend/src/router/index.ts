@@ -11,8 +11,8 @@ import AdvancedSettingsView from '../views/AdvancedSettingsView.vue'
 import CodebaseView from '../views/CodebaseView.vue'
 import ContributorsView from '../views/ContributorsView.vue'
 import DashboardView from '../views/DashboardView.vue'
-import ExplorerView from '../views/ExplorerView.vue'
-import ExplorerCommitDetailView from '../views/ExplorerCommitDetailView.vue'
+import ActivityView from '../views/ActivityView.vue'
+import ActivityCommitDetailView from '../views/ActivityCommitDetailView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -32,13 +32,13 @@ export const router = createRouter({
       path: '/activity',
       alias: ['/explorer'],
       name: 'activity',
-      component: ExplorerView,
+      component: ActivityView,
     },
     {
       path: '/activity/commit/:repoId/:commitSha',
       alias: ['/explorer/commit/:repoId/:commitSha'],
       name: 'activity-commit',
-      component: ExplorerCommitDetailView,
+      component: ActivityCommitDetailView,
       props: true,
     },
     {

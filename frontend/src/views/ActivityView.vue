@@ -9,9 +9,10 @@ import {
   File,
 } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard'
-import { useExplorerStore } from '../stores/explorer'
+import { useActivityStore } from '../stores/activity'
+import { useAppearanceStore } from '../stores/appearance'
 import { useTheme } from '../composables/useTheme'
-import ExplorerAnnotationModal from '../components/ExplorerAnnotationModal.vue'
+import ActivityAnnotationModal from '../components/ActivityAnnotationModal.vue'
 import VChart from 'vue-echarts'
 import type { EChartsOption } from 'echarts'
 import { getSeriesColor } from '../lib/chart'
@@ -19,7 +20,8 @@ import { getSeriesColor } from '../lib/chart'
 const route = useRoute()
 const router = useRouter()
 const dashboard = useDashboardStore()
-const explorer = useExplorerStore()
+const explorer = useActivityStore()
+const appearance = useAppearanceStore()
 const { isDark } = useTheme()
 
 const metricNoun = computed(() => {
@@ -74,6 +76,13 @@ const chartSeries = computed(() => {
   })
 })
 
+const referenceOverlaySeries = computed(() => {
+  if (!explorer.compareOverlayVisible) {
+    return []
+  }
+  return explorer.compareData?.series.alignedReference ?? []
+})
+
 const chartDays = computed(() => {
   const days = new Set<string>()
   for (const series of chartSeries.value) {
@@ -106,9 +115,9 @@ const chartCanvasStyle = computed(() => {
 })
 
 const chartOption = computed<EChartsOption>(() => {
-  const series = chartSeries.value.map((entry, index) => {
+  const currentSeries = chartSeries.value.map((entry, index) => {
     const color = explorer.groupBy === 'none'
-      ? '#6366f1'
+      ? appearance.accentColor
       : getSeriesColor(index)
     const seriesType: 'bar' | 'line' = explorer.chartStyle === 'bar' ? 'bar' : 'line'
     const pointMap = new Map(entry.points.map((point) => [point.day, point.value]))
@@ -138,7 +147,7 @@ const chartOption = computed<EChartsOption>(() => {
             itemStyle: explorer.groupBy === 'none'
               ? {
                   color: chartDays.value[valueIndex] === explorer.selectedDate
-                    ? '#6366f1'
+                    ? appearance.accentColor
                     : 'rgba(148, 163, 184, 0.35)',
                   borderRadius: [3, 3, 0, 0],
                 }
@@ -159,18 +168,48 @@ const chartOption = computed<EChartsOption>(() => {
             animation: false,
             label: { show: false },
             lineStyle: {
-              color: 'rgba(99, 102, 241, 0.22)',
+              color: appearance.accentSubtleColor,
               width: 1,
             },
             data: [{ xAxis: explorer.selectedDate }],
           }
         : undefined,
     }
-  }) as NonNullable<EChartsOption['series']>
+  })
+
+  const overlaySeries = referenceOverlaySeries.value.map((entry, index) => {
+    const color = explorer.groupBy === 'none'
+      ? appearance.accentColor
+      : getSeriesColor(index)
+    const pointMap = new Map(entry.points.map((point) => [point.day, point.value]))
+
+    return {
+      id: `${entry.key}::reference`,
+      name: `${entry.label} reference`,
+      type: 'line' as const,
+      smooth: false,
+      showSymbol: false,
+      symbolSize: 0,
+      silent: true,
+      emphasis: { disabled: true },
+      lineStyle: {
+        width: 2,
+        type: 'dashed',
+        color,
+        opacity: 0.58,
+      },
+      itemStyle: { color, opacity: 0.58 },
+      z: 1,
+      data: chartDays.value.map((day) => pointMap.get(day) ?? null),
+    }
+  })
+
+  const series = [...currentSeries, ...overlaySeries] as NonNullable<EChartsOption['series']>
 
   return {
     backgroundColor: 'transparent',
-    animation: true,
+    animation: appearance.animateCharts,
+    animationDuration: appearance.animateCharts ? 250 : 0,
     color: chartSeries.value.map((_, index) => getSeriesColor(index)),
     tooltip: {
       trigger: 'axis',
@@ -180,6 +219,7 @@ const chartOption = computed<EChartsOption>(() => {
     legend: chartLegendVisible.value
       ? {
           type: 'scroll',
+          data: chartSeries.value.map((entry) => entry.label),
           orient: 'vertical',
           top: 8,
           right: 0,
@@ -245,19 +285,29 @@ function formatChartTooltip(params: unknown) {
   const rows = points
     .map((point) => ({
       label: point.seriesName ?? explorer.metricLabel,
-      color: typeof point.color === 'string' ? point.color : '#6366f1',
+      color: typeof point.color === 'string' ? point.color : appearance.accentColor,
       value: extractTooltipValue(point.value),
     }))
     .sort((left, right) => right.value - left.value)
 
-  const total = rows.reduce((sum, row) => sum + row.value, 0)
-  const lines = rows
-    .filter((row) => row.value > 0 || rows.length === 1)
+  const normalizedRows = rows.map((row) => ({
+    ...row,
+    isReference: row.label.endsWith(' reference'),
+    displayLabel: row.label.endsWith(' reference')
+      ? `${row.label.slice(0, -10)} (reference)`
+      : row.label,
+  }))
+
+  const total = normalizedRows
+    .filter((row) => !row.isReference)
+    .reduce((sum, row) => sum + row.value, 0)
+  const lines = normalizedRows
+    .filter((row) => row.value > 0 || normalizedRows.length === 1)
     .map((row) =>
-      `<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${row.color};margin-right:6px;"></span>${row.label}: ${row.value} ${metricNoun.value}`,
+      `<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${row.color};margin-right:6px;"></span>${row.displayLabel}: ${row.value} ${metricNoun.value}`,
     )
 
-  if (rows.length > 1) {
+  if (normalizedRows.filter((row) => !row.isReference).length > 1) {
     lines.push(`<strong>Total: ${total} ${metricNoun.value}</strong>`)
   }
 
@@ -372,9 +422,13 @@ watch(
     explorer.selectedProductCodes.join(','),
     explorer.metric,
     explorer.groupBy,
+    explorer.compareMode,
+    explorer.compareAnchorDate,
+    explorer.compareCustomRange?.from ?? '',
+    explorer.compareCustomRange?.to ?? '',
   ] as const,
   () => {
-    void explorer.refreshExplorer().then(() => explorer.syncQueryToUrl(router))
+    void explorer.refreshActivity().then(() => explorer.syncQueryToUrl(router))
   },
 )
 
@@ -419,7 +473,7 @@ onMounted(async () => {
   if (!explorer.initialized) {
     explorer.initFromQuery(route.query)
   }
-  await explorer.refreshExplorer()
+  await explorer.refreshActivity()
 })
 </script>
 
@@ -433,14 +487,31 @@ onMounted(async () => {
             {{ formattedSelectedDate }} selected · {{ selectedDayCommitCount }} commits across {{ selectedDayRepoCount }} repos
           </span>
         </div>
+        <div v-if="explorer.compareEnabled" class="explorer-chart__compare-summary">
+          <span class="explorer-chart__compare-chip">
+            {{ explorer.compareModeLabel }}
+          </span>
+          <span v-if="explorer.compareReferenceLabel" class="explorer-chart__compare-chip">
+            {{ explorer.compareReferenceLabel }}
+          </span>
+          <span class="explorer-chart__compare-chip explorer-chart__compare-chip--delta">
+            {{ explorer.compareDeltaLabel }}
+          </span>
+        </div>
       </div>
       <div class="explorer-chart__canvas-wrap">
         <div v-if="explorer.analyticsError" class="explorer-chart__empty explorer-chart__empty--error">
           <span>{{ explorer.analyticsError }}</span>
           <button class="explorer-chart__retry" type="button" @click="explorer.loadAnalytics()">Retry</button>
         </div>
+        <div
+          v-else-if="chartDays.length && explorer.compareEnabled && explorer.compareError"
+          class="explorer-chart__compare-error"
+        >
+          <span>{{ explorer.compareError }}</span>
+        </div>
         <VChart
-          v-else-if="chartDays.length"
+          v-if="!explorer.analyticsError && chartDays.length"
           class="explorer-chart__canvas"
           :style="chartCanvasStyle"
           :option="chartOption"
@@ -613,7 +684,7 @@ onMounted(async () => {
       </section>
     </section>
 
-    <ExplorerAnnotationModal
+    <ActivityAnnotationModal
       :open="explorer.annotationDialogOpen"
       :annotation="explorer.editingAnnotation"
       :day="explorer.selectedDate"
@@ -682,6 +753,31 @@ onMounted(async () => {
   line-height: 1.3;
 }
 
+.explorer-chart__compare-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.explorer-chart__compare-chip {
+  border-radius: 999px;
+  border: 1px solid var(--cf-border);
+  background: rgba(148, 163, 184, 0.08);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--cf-text-secondary);
+  line-height: 1;
+}
+
+.explorer-chart__compare-chip--delta {
+  border-color: color-mix(in srgb, var(--cf-accent) 22%, transparent);
+  background: var(--cf-accent-subtle);
+  color: var(--cf-accent);
+}
+
 
 .explorer-chart__canvas-wrap {
   flex: 1;
@@ -689,6 +785,21 @@ onMounted(async () => {
   position: relative;
   display: flex;
   justify-content: flex-start;
+}
+
+.explorer-chart__compare-error {
+  position: absolute;
+  top: 6px;
+  left: 12px;
+  z-index: 1;
+  max-width: min(420px, calc(100% - 24px));
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .explorer-chart__canvas {
@@ -920,7 +1031,7 @@ onMounted(async () => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #6366f1;
+  background: var(--cf-accent);
   color: white;
   font-size: 10px;
   font-weight: 600;

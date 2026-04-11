@@ -35,7 +35,14 @@
       "Bash(ps -p 519 -o pid,command)",
       "Bash(lsof -iTCP:4173)",
       "Bash(curl -v --max-time 5 http://127.0.0.1:4173/)",
-      "Bash(kill 519)"
+      "Bash(kill 519)",
+      "mcp__superconductor__set_tab_title",
+      "Bash(find /Users/eli/projects/personal/code-flux -type f \\\\\\(-name config* -o -name settings* \\\\\\) ! -path */node_modules/* ! -path */.git/*)",
+      "Bash(find /Users/eli/projects/personal/code-flux -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.vue \\\\\\) ! -path */node_modules/* ! -path */.git/*)",
+      "Bash(grep -E \"\\\\.\\(kt|java\\)$\")",
+      "Bash(find /Users/eli/projects/personal/code-flux/frontend/src -type f \\\\\\(-name *.css -o -name *.scss \\\\\\) ! -path */node_modules/*)",
+      "Bash(grep -r cf-sidebar /Users/eli/projects/personal/code-flux/frontend/src --include=*.ts --include=*.tsx --include=*.vue)",
+      "Bash(grep -r \"palette\\\\|accent\\\\|color.*scheme\" /Users/eli/projects/personal/code-flux/frontend/src --include=*.ts --include=*.tsx --include=*.vue)"
     ]
   }
 }

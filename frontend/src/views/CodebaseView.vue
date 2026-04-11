@@ -5,7 +5,8 @@ import VChart from 'vue-echarts'
 import type { EChartsOption } from 'echarts'
 import { Folder, TrendingUp } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard'
-import { useExplorerStore } from '../stores/explorer'
+import { useActivityStore } from '../stores/activity'
+import { useAppearanceStore } from '../stores/appearance'
 import { useCodebaseStore, type CodebaseTreemapSizeMode } from '../stores/codebase'
 import type { CodebaseBreakdownRow, CodebaseTreeNode } from '../types/workspace'
 
@@ -16,25 +17,49 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 const dashboard = useDashboardStore()
-const explorer = useExplorerStore()
+const explorer = useActivityStore()
 const codebase = useCodebaseStore()
+const appearance = useAppearanceStore()
 
 const sizeMode = ref<CodebaseTreemapSizeMode>('loc')
 
 const enabledRepos = computed(() => (dashboard.bootstrap?.repos ?? []).filter((repo) => repo.enabled))
-const activeRepoId = computed(() => props.repoId ?? (typeof route.params.repoId === 'string' ? route.params.repoId : ''))
+const routeRepoId = computed(() => props.repoId ?? (typeof route.params.repoId === 'string' ? route.params.repoId : ''))
+const activeRepoId = computed(() => {
+  const enabledRepoIds = new Set(enabledRepos.value.map((repo) => repo.id))
+  const selectedRepoId = explorer.selectedRepoIds.find((repoId) => enabledRepoIds.has(repoId)) ?? ''
+  return selectedRepoId || enabledRepos.value[0]?.id || ''
+})
 
 watch(
-  () => [enabledRepos.value.map((repo) => repo.id).join(','), activeRepoId.value, route.name] as const,
-  async ([repoKey, repoId, routeName]) => {
+  () => [
+    enabledRepos.value.map((repo) => repo.id).join(','),
+    routeRepoId.value,
+    explorer.selectedRepoIds.join(','),
+    route.name,
+  ] as const,
+  async ([repoKey, legacyRepoId, selectedRepoIds, routeName]) => {
     if (!repoKey) {
       return
     }
-    if (!repoId && routeName === 'codebase') {
-      await router.replace({
-        name: 'codebase-repo',
-        params: { repoId: enabledRepos.value[0].id },
-      })
+
+    const enabledRepoIds = new Set(enabledRepos.value.map((repo) => repo.id))
+    const normalizedLegacyRepoId = legacyRepoId && enabledRepoIds.has(legacyRepoId) ? legacyRepoId : ''
+    const normalizedSelectedRepoId = selectedRepoIds
+      .split(',')
+      .find((repoId) => repoId && enabledRepoIds.has(repoId)) ?? ''
+    const nextRepoId = normalizedLegacyRepoId || normalizedSelectedRepoId || enabledRepos.value[0]?.id || ''
+
+    if (!nextRepoId) {
+      return
+    }
+
+    if (explorer.selectedRepoIds.length !== 1 || explorer.selectedRepoIds[0] !== nextRepoId) {
+      explorer.setRepoFilters([nextRepoId])
+    }
+
+    if (routeName === 'codebase-repo') {
+      await router.replace({ name: 'codebase' })
     }
   },
   { immediate: true },
@@ -51,9 +76,6 @@ watch(
     explorer.selectedProductCodes.join(','),
   ] as const,
   ([repoId]) => {
-    if (!repoId) {
-      return
-    }
     void codebase.refresh(repoId)
   },
   { immediate: true },
@@ -244,13 +266,26 @@ const growthChartOption = computed<EChartsOption>(() => {
     5,
   )
   const categories = ['a1', 'a2', 'a3', 'a4', 'a5', 'gap', 'n1', 'n2', 'n3', 'n4', 'n5']
-  const palette = ['#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', 'transparent', '#a7f3d0', '#6ee7b7', '#34d399', '#10b981', '#059669']
+  const palette = [
+    appearance.accentSubtleColor,
+    appearance.accentSubtleColor,
+    appearance.accentColor,
+    appearance.accentHoverColor,
+    appearance.accentHoverColor,
+    'transparent',
+    '#a7f3d0',
+    '#6ee7b7',
+    '#34d399',
+    '#10b981',
+    '#059669',
+  ]
   const values = [...actualValues, 0, ...cumulativeValues]
   const maxValue = Math.max(...values, 1)
 
   return {
     backgroundColor: 'transparent',
-    animationDuration: 250,
+    animation: appearance.animateCharts,
+    animationDuration: appearance.animateCharts ? 250 : 0,
     grid: {
       left: 0,
       right: '74%',
@@ -291,7 +326,8 @@ const growthChartOption = computed<EChartsOption>(() => {
 
 const structureChartOption = computed<EChartsOption>(() => ({
   backgroundColor: 'transparent',
-  animationDuration: 250,
+  animation: appearance.animateCharts,
+  animationDuration: appearance.animateCharts ? 250 : 0,
   tooltip: { show: false },
   series: [
     {
@@ -511,7 +547,7 @@ const structureChartOption = computed<EChartsOption>(() => ({
 }
 
 .codebase-card__title :deep(svg) {
-  color: #6366f1;
+  color: var(--cf-accent);
 }
 
 .codebase-card__legend {
@@ -533,8 +569,8 @@ const structureChartOption = computed<EChartsOption>(() => ({
 }
 
 .codebase-card__legend-pill--actual {
-  background: #eef2ff;
-  color: #4338ca;
+  background: color-mix(in srgb, var(--cf-accent) 10%, transparent);
+  color: var(--cf-accent);
 }
 
 .codebase-card__legend-pill--net {
@@ -576,9 +612,9 @@ const structureChartOption = computed<EChartsOption>(() => ({
 }
 
 .codebase-mode-switcher__button--active {
-  border-color: rgba(99, 102, 241, 0.16);
-  background: #eef2ff;
-  color: #4338ca;
+  border-color: color-mix(in srgb, var(--cf-accent) 16%, transparent);
+  background: color-mix(in srgb, var(--cf-accent) 10%, transparent);
+  color: var(--cf-accent);
   font-weight: 600;
 }
 

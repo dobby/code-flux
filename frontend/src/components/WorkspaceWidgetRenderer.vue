@@ -4,6 +4,7 @@ import VChart from 'vue-echarts'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 import '../lib/chart'
+import { useAppearanceStore } from '../stores/appearance'
 import type { AnnotationV2, DayDrilldownResponse, PageWidgetResolved, QueryExecutionResponse } from '../types/workspace'
 
 const props = defineProps<{
@@ -25,7 +26,12 @@ const markdown = new MarkdownIt({
   breaks: true,
 })
 
+const appearance = useAppearanceStore()
 const isPreview = computed(() => props.presentation === 'preview')
+const chartMotion = computed(() => ({
+  animation: appearance.animateCharts,
+  animationDuration: appearance.animateCharts ? 250 : 0,
+}))
 const metricFootnote = computed(() => props.widget.effectiveDescription || 'Selected range')
 const metricValue = computed(() => {
   const totals = props.data?.totals ?? {}
@@ -62,6 +68,7 @@ const chartOption = computed(() => {
       grouped.set(label, series)
     }
     return {
+      ...chartMotion.value,
       tooltip: { trigger: 'axis' },
       legend: { show: false },
       grid: { left: isPreview.value ? 12 : 6, right: isPreview.value ? 12 : 8, top: isPreview.value ? 20 : 8, bottom: isPreview.value ? 20 : 8, containLabel: true },
@@ -84,12 +91,12 @@ const chartOption = computed(() => {
         name: label,
         type: props.widget.effectiveViz.chartType === 'bar' ? 'bar' : 'line',
         smooth: props.widget.effectiveViz.chartType !== 'bar',
-        areaStyle: props.widget.effectiveViz.chartType === 'area' ? { color: 'rgba(99, 102, 241, 0.1)' } : undefined,
+        areaStyle: props.widget.effectiveViz.chartType === 'area' ? { color: appearance.accentSubtleColor } : undefined,
         showSymbol: false,
         symbol: 'circle',
         symbolSize: isPreview.value ? 7 : 0,
-        lineStyle: { width: isPreview.value ? 2.5 : 2, color: '#6366f1' },
-        itemStyle: { color: '#6366f1' },
+        lineStyle: { width: isPreview.value ? 2.5 : 2, color: appearance.accentColor },
+        itemStyle: { color: appearance.accentColor },
         data: points,
         markLine: props.annotations?.length
           ? {
@@ -115,6 +122,7 @@ const chartOption = computed(() => {
     }))
     if ((props.widget.effectiveViz.chartType ?? 'bar') === 'donut' || props.widget.effectiveViz.chartType === 'pie') {
       return {
+        ...chartMotion.value,
         tooltip: { trigger: 'item' },
         legend: { show: false },
         series: [
@@ -127,6 +135,7 @@ const chartOption = computed(() => {
       }
         }
     return {
+      ...chartMotion.value,
       tooltip: { trigger: 'axis' },
       grid: { left: isPreview.value ? 12 : 44, right: isPreview.value ? 12 : 6, top: isPreview.value ? 18 : 8, bottom: isPreview.value ? 18 : 8, containLabel: true },
       xAxis: {
@@ -146,7 +155,7 @@ const chartOption = computed(() => {
       series: [
         {
           type: 'bar',
-          itemStyle: { color: '#6366f1', borderRadius: 4 },
+          itemStyle: { color: appearance.accentColor, borderRadius: 4 },
           data: points.map((point) => point.value),
         },
       ],
@@ -156,6 +165,7 @@ const chartOption = computed(() => {
   if (props.widget.instance.kind === 'calendar_heatmap') {
     const data = rows.map((row) => [String(row.bucket ?? ''), Number(row.value ?? 0)])
     return {
+      ...chartMotion.value,
       tooltip: { position: 'top' },
       visualMap: {
         min: 0,

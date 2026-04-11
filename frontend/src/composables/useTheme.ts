@@ -1,31 +1,14 @@
-import { computed, ref, watch } from 'vue'
-
-type Theme = 'light' | 'dark'
-
-const STORAGE_KEY = 'cf-theme'
-
-function getInitialTheme(): Theme {
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored === 'light' || stored === 'dark') return stored
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-const theme = ref<Theme>(getInitialTheme())
-
-function applyTheme(value: Theme) {
-  document.documentElement.classList.toggle('dark', value === 'dark')
-  localStorage.setItem(STORAGE_KEY, value)
-}
-
-applyTheme(theme.value)
-
-watch(theme, applyTheme)
+import { computed } from 'vue'
+import { useAppearanceStore } from '../stores/appearance'
 
 export function useTheme() {
-  const isDark = computed(() => theme.value === 'dark')
+  const appearance = useAppearanceStore()
+  const theme = computed(() => appearance.resolvedMode)
+  const isDark = computed(() => appearance.isDark)
 
   function toggleTheme() {
-    theme.value = theme.value === 'dark' ? 'light' : 'dark'
+    const next = appearance.resolvedMode === 'dark' ? 'light' : 'dark'
+    void appearance.updateMode(next)
   }
 
   return { theme, isDark, toggleTheme }

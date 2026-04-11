@@ -1,5 +1,6 @@
 package com.company.throughput.web
 
+import com.company.throughput.config.AppearanceProperties
 import com.company.throughput.config.ConfigFileService
 import com.company.throughput.config.EditableDashboardConfig
 import org.springframework.web.bind.annotation.GetMapping
@@ -25,6 +26,11 @@ data class ConfigBuilderResponse(
     val config: EditableDashboardConfig,
     val yaml: String,
     val restartRequired: Boolean,
+    val savedAt: Instant? = null,
+)
+
+data class AppearanceConfigResponse(
+    val appearance: AppearanceProperties,
     val savedAt: Instant? = null,
 )
 
@@ -54,6 +60,12 @@ class ConfigController(
         )
     }
 
+    @GetMapping("/appearance")
+    fun readAppearance(): AppearanceConfigResponse =
+        AppearanceConfigResponse(
+            appearance = configFileService.readEditableConfig().appearance,
+        )
+
     @PutMapping
     fun updateConfig(@RequestBody request: UpdateConfigFileRequest): ConfigFileResponse {
         val result = configFileService.saveConfigFile(request.yaml)
@@ -75,6 +87,18 @@ class ConfigController(
             config = configFileService.readEditableConfig(),
             yaml = snapshot.yaml,
             restartRequired = result.restartRequired,
+            savedAt = result.savedAt,
+        )
+    }
+
+    @PutMapping("/appearance")
+    fun updateAppearance(@RequestBody request: AppearanceProperties): AppearanceConfigResponse {
+        val currentConfig = configFileService.readEditableConfig()
+        val result = configFileService.saveEditableConfig(
+            currentConfig.copy(appearance = request),
+        )
+        return AppearanceConfigResponse(
+            appearance = configFileService.readEditableConfig().appearance,
             savedAt = result.savedAt,
         )
     }

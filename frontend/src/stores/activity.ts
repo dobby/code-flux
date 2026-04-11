@@ -3,14 +3,17 @@ import { computed, ref } from 'vue'
 import type { Router, RouteLocationNormalizedLoaded } from 'vue-router'
 import { queryAnalytics } from '../api/client'
 import {
+  compareActivity,
   createAnnotationV2,
   deleteAnnotationV2,
-  getExplorerCommitDetail,
+  getActivityCommitDetail,
   listAnnotationsV2,
   loadDayDrilldown,
   updateAnnotationV2,
 } from '../api/workspace'
 import type {
+  ActivityCompareMode,
+  ActivityCompareResponse,
   AnnotationV2,
   AnnotationTypeV2,
   CommitDetailResponse,
@@ -20,12 +23,13 @@ import type {
 import type { AnalyticsQueryResponse, DateRange, GroupBy, Metric } from '../types/api'
 import { useDashboardStore } from './dashboard'
 
-export type ExplorerChartStyle = 'bar' | 'line' | 'area'
-export type ExplorerRangePreset = '7d' | '14d' | '30d' | '90d' | 'custom'
-export type ExplorerExtraFilterKind = 'author' | 'language' | 'category' | 'product'
-export type ExplorerMetric = Metric | 'cumulative_net'
+export type ActivityChartStyle = 'bar' | 'line' | 'area'
+export type ActivityRangePreset = '7d' | '14d' | '30d' | '90d' | 'custom'
+export type ActivityExtraFilterKind = 'author' | 'language' | 'category' | 'product'
+export type ActivityMetric = Metric | 'cumulative_net'
+export type ActivityComparePresetMode = ActivityCompareMode
 
-export const EXPLORER_GROUP_BY_OPTIONS: Array<{ value: GroupBy; label: string }> = [
+export const ACTIVITY_GROUP_BY_OPTIONS: Array<{ value: GroupBy; label: string }> = [
   { value: 'author', label: 'Author' },
   { value: 'repo', label: 'Repository' },
   { value: 'cohort', label: 'Cohort' },
@@ -36,13 +40,13 @@ export const EXPLORER_GROUP_BY_OPTIONS: Array<{ value: GroupBy; label: string }>
   { value: 'none', label: 'Total' },
 ]
 
-export const EXPLORER_CHART_STYLE_OPTIONS: Array<{ value: ExplorerChartStyle; label: string }> = [
+export const ACTIVITY_CHART_STYLE_OPTIONS: Array<{ value: ActivityChartStyle; label: string }> = [
   { value: 'line', label: 'Line' },
   { value: 'area', label: 'Area' },
   { value: 'bar', label: 'Bar' },
 ]
 
-export const EXPLORER_METRIC_OPTIONS: Array<{ value: ExplorerMetric; label: string }> = [
+export const ACTIVITY_METRIC_OPTIONS: Array<{ value: ActivityMetric; label: string }> = [
   { value: 'lines_added', label: 'Lines Added' },
   { value: 'lines_removed', label: 'Lines Removed' },
   { value: 'net_lines', label: 'Net Lines' },
@@ -51,11 +55,16 @@ export const EXPLORER_METRIC_OPTIONS: Array<{ value: ExplorerMetric; label: stri
   { value: 'file_count', label: 'File Count' },
 ]
 
-export const EXPLORER_EXTRA_FILTER_OPTIONS: Array<{ value: ExplorerExtraFilterKind; label: string }> = [
+export const ACTIVITY_EXTRA_FILTER_OPTIONS: Array<{ value: ActivityExtraFilterKind; label: string }> = [
   { value: 'author', label: 'Author' },
   { value: 'language', label: 'Language' },
   { value: 'category', label: 'Category' },
   { value: 'product', label: 'Product code' },
+]
+
+export const ACTIVITY_COMPARE_PRESET_OPTIONS: Array<{ value: Exclude<ActivityComparePresetMode, 'off' | 'custom_anchor_date' | 'custom_range'>; label: string }> = [
+  { value: 'previous_period', label: 'Previous period' },
+  { value: 'previous_year', label: 'Previous year' },
 ]
 
 function formatLocalDate(date: Date): string {
@@ -72,7 +81,7 @@ function shiftDays(source: Date, days: number): Date {
   return next
 }
 
-function buildPresetDateRange(preset: Exclude<ExplorerRangePreset, 'custom'>): DateRange {
+function buildPresetDateRange(preset: Exclude<ActivityRangePreset, 'custom'>): DateRange {
   const today = new Date()
   switch (preset) {
     case '7d':
@@ -92,6 +101,10 @@ function normalizeDateInput(value: unknown): string {
 
 function isValidDateRange(range: DateRange): boolean {
   return Boolean(range.from && range.to && range.from <= range.to)
+}
+
+function backendMetric(metric: ActivityMetric): Metric {
+  return metric === 'cumulative_net' ? 'net_lines' : metric
 }
 
 function formatDateRangeLabel(range: DateRange): string {
@@ -127,31 +140,38 @@ function toDrilldownSeriesField(groupBy: GroupBy): string | null {
   }
 }
 
-export const useExplorerStore = defineStore('explorer', () => {
+export const useActivityStore = defineStore('activity', () => {
   const dashboard = useDashboardStore()
-  const rangePreset = ref<ExplorerRangePreset>('14d')
+  const rangePreset = ref<ActivityRangePreset>('14d')
   const customDateRange = ref<DateRange>(buildPresetDateRange('14d'))
   const selectedRepoIds = ref<string[]>([])
   const selectedAuthorIds = ref<string[]>([])
   const selectedLanguages = ref<string[]>([])
   const selectedCategories = ref<string[]>([])
   const selectedProductCodes = ref<string[]>([])
-  const visibleExtraFilterKinds = ref<ExplorerExtraFilterKind[]>([])
+  const visibleExtraFilterKinds = ref<ActivityExtraFilterKind[]>([])
   const selectedDate = ref('')
   const selectedCommitSha = ref<string | null>(null)
   const selectedSeriesKey = ref<string | null>(null)
-  const metric = ref<ExplorerMetric>('commit_count')
+  const metric = ref<ActivityMetric>('commit_count')
   const groupBy = ref<GroupBy>('author')
-  const chartStyle = ref<ExplorerChartStyle>('line')
+  const chartStyle = ref<ActivityChartStyle>('line')
   const showLegend = ref(true)
+  const compareMode = ref<ActivityComparePresetMode>('off')
+  const compareAnchorDate = ref('')
+  const compareCustomRange = ref<DateRange | null>(null)
+  const compareOverlayVisible = ref(true)
+  const compareData = ref<ActivityCompareResponse | null>(null)
   const analytics = ref<AnalyticsQueryResponse | null>(null)
   const dayDetail = ref<DayDrilldownResponse | null>(null)
   const annotations = ref<AnnotationV2[]>([])
   const loadingAnalytics = ref(false)
+  const loadingCompare = ref(false)
   const loadingDay = ref(false)
   const loadingAnnotations = ref(false)
   const loadingCommitDetail = ref(false)
   const analyticsError = ref<string | null>(null)
+  const compareError = ref<string | null>(null)
   const dayError = ref<string | null>(null)
   const annotationsError = ref<string | null>(null)
   const commitDetailError = ref<string | null>(null)
@@ -161,6 +181,7 @@ export const useExplorerStore = defineStore('explorer', () => {
   const initialized = ref(false)
   const commitFilesExpanded = ref(false)
   const lastAnalyticsRequestId = ref(0)
+  const lastCompareRequestId = ref(0)
   const lastDayRequestId = ref(0)
   const lastAnnotationsRequestId = ref(0)
   const lastCommitDetailRequestId = ref(0)
@@ -190,6 +211,41 @@ export const useExplorerStore = defineStore('explorer', () => {
     }
   })
 
+  const compareEnabled = computed(() => compareMode.value !== 'off')
+
+  const compareModeLabel = computed(() => {
+    switch (compareMode.value) {
+      case 'previous_period':
+        return 'Previous period'
+      case 'previous_year':
+        return 'Previous year'
+      case 'custom_anchor_date':
+        return 'Custom past date'
+      case 'custom_range':
+        return 'Custom date range'
+      default:
+        return 'Compare'
+    }
+  })
+
+  const compareReferenceLabel = computed(() => {
+    if (!compareData.value) {
+      return null
+    }
+    return formatDateRangeLabel({
+      from: compareData.value.reference.from,
+      to: compareData.value.reference.to,
+    })
+  })
+
+  const compareDeltaLabel = computed(() => {
+    const percentage = compareData.value?.delta.percentage
+    if (percentage == null) {
+      return 'n/a'
+    }
+    return `${percentage >= 0 ? '+' : ''}${percentage.toFixed(1)}%`
+  })
+
   const repoOptions = computed(() => dashboard.bootstrap?.repos ?? [])
   const authorOptions = computed(() => dashboard.bootstrap?.authors ?? [])
   const languageOptions = computed(() => dashboard.options?.languages ?? [])
@@ -207,15 +263,15 @@ export const useExplorerStore = defineStore('explorer', () => {
   })
 
   const groupByLabel = computed(
-    () => EXPLORER_GROUP_BY_OPTIONS.find((option) => option.value === groupBy.value)?.label ?? 'Author',
+    () => ACTIVITY_GROUP_BY_OPTIONS.find((option) => option.value === groupBy.value)?.label ?? 'Author',
   )
 
   const metricLabel = computed(
-    () => EXPLORER_METRIC_OPTIONS.find((option) => option.value === metric.value)?.label ?? 'Commit Count',
+    () => ACTIVITY_METRIC_OPTIONS.find((option) => option.value === metric.value)?.label ?? 'Commit Count',
   )
 
   const chartStyleLabel = computed(
-    () => EXPLORER_CHART_STYLE_OPTIONS.find((option) => option.value === chartStyle.value)?.label ?? 'Line',
+    () => ACTIVITY_CHART_STYLE_OPTIONS.find((option) => option.value === chartStyle.value)?.label ?? 'Line',
   )
 
   const activeFilterCount = computed(() => (
@@ -226,7 +282,7 @@ export const useExplorerStore = defineStore('explorer', () => {
   ))
 
   const availableExtraFilterKinds = computed(() => (
-    EXPLORER_EXTRA_FILTER_OPTIONS.filter((option) => !visibleExtraFilterKinds.value.includes(option.value))
+    ACTIVITY_EXTRA_FILTER_OPTIONS.filter((option) => !visibleExtraFilterKinds.value.includes(option.value))
   ))
 
   const selectedSeries = computed(() => {
@@ -366,6 +422,16 @@ export const useExplorerStore = defineStore('explorer', () => {
     if (selectedSeriesKey.value) {
       query.series = selectedSeriesKey.value
     }
+    if (compareMode.value !== 'off') {
+      query.compareMode = compareMode.value
+      if (compareMode.value === 'custom_anchor_date' && compareAnchorDate.value) {
+        query.compareAnchor = compareAnchorDate.value
+      }
+      if (compareMode.value === 'custom_range' && compareCustomRange.value && isValidDateRange(compareCustomRange.value)) {
+        query.compareFrom = compareCustomRange.value.from
+        query.compareTo = compareCustomRange.value.to
+      }
+    }
     return query
   }
 
@@ -373,12 +439,12 @@ export const useExplorerStore = defineStore('explorer', () => {
     const requestId = ++lastAnalyticsRequestId.value
     loadingAnalytics.value = true
     analyticsError.value = null
-    const backendMetric: Metric = metric.value === 'cumulative_net' ? 'net_lines' : metric.value
+    const queryMetric = backendMetric(metric.value)
 
     try {
       const response = await queryAnalytics({
         dateRange: effectiveDateRange.value,
-        metric: backendMetric,
+        metric: queryMetric,
         groupBy: groupBy.value,
         filters: {
           authorIds: selectedAuthorIds.value,
@@ -414,6 +480,67 @@ export const useExplorerStore = defineStore('explorer', () => {
     } finally {
       if (requestId === lastAnalyticsRequestId.value) {
         loadingAnalytics.value = false
+      }
+    }
+  }
+
+  async function loadCompare() {
+    const requestId = ++lastCompareRequestId.value
+    if (compareMode.value === 'off') {
+      compareData.value = null
+      compareError.value = null
+      loadingCompare.value = false
+      return
+    }
+
+    if (compareMode.value === 'custom_anchor_date' && !compareAnchorDate.value) {
+      compareData.value = null
+      compareError.value = null
+      loadingCompare.value = false
+      return
+    }
+
+    if (compareMode.value === 'custom_range' && (!compareCustomRange.value || !isValidDateRange(compareCustomRange.value))) {
+      compareData.value = null
+      compareError.value = null
+      loadingCompare.value = false
+      return
+    }
+
+    loadingCompare.value = true
+    compareError.value = null
+
+    try {
+      const response = await compareActivity({
+        current: effectiveDateRange.value,
+        mode: compareMode.value,
+        customAnchorDate: compareMode.value === 'custom_anchor_date' ? compareAnchorDate.value : null,
+        customRange: compareMode.value === 'custom_range' ? compareCustomRange.value : null,
+        metric: backendMetric(metric.value),
+        groupBy: groupBy.value,
+        filters: {
+          authorIds: selectedAuthorIds.value,
+          repoIds: selectedRepoIds.value,
+          languages: selectedLanguages.value,
+          categories: selectedCategories.value,
+          subtypes: [],
+          productCodes: selectedProductCodes.value,
+          cohorts: [],
+        },
+      })
+      if (requestId !== lastCompareRequestId.value) {
+        return
+      }
+      compareData.value = response
+    } catch (caught) {
+      if (requestId !== lastCompareRequestId.value) {
+        return
+      }
+      compareData.value = null
+      compareError.value = toMessage(caught)
+    } finally {
+      if (requestId === lastCompareRequestId.value) {
+        loadingCompare.value = false
       }
     }
   }
@@ -508,7 +635,7 @@ export const useExplorerStore = defineStore('explorer', () => {
     commitDetailError.value = null
 
     try {
-      const response = await getExplorerCommitDetail(commit.repoId, commit.commitSha)
+      const response = await getActivityCommitDetail(commit.repoId, commit.commitSha)
       if (requestId !== lastCommitDetailRequestId.value) {
         return
       }
@@ -526,9 +653,9 @@ export const useExplorerStore = defineStore('explorer', () => {
     }
   }
 
-  async function refreshExplorer() {
+  async function refreshActivity() {
     await loadAnalytics()
-    await Promise.all([loadDay(), loadAnnotationsForDay()])
+    await Promise.all([loadDay(), loadAnnotationsForDay(), loadCompare()])
     await loadSelectedCommitDetail()
   }
 
@@ -550,7 +677,7 @@ export const useExplorerStore = defineStore('explorer', () => {
     selectedCommitSha.value = sha
   }
 
-  function setRangePreset(preset: Exclude<ExplorerRangePreset, 'custom'>) {
+  function setRangePreset(preset: Exclude<ActivityRangePreset, 'custom'>) {
     selectedSeriesKey.value = null
     rangePreset.value = preset
   }
@@ -574,12 +701,49 @@ export const useExplorerStore = defineStore('explorer', () => {
     groupBy.value = nextGroupBy
   }
 
-  function setMetric(nextMetric: ExplorerMetric) {
+  function setMetric(nextMetric: ActivityMetric) {
     selectedSeriesKey.value = null
     metric.value = nextMetric
   }
 
-  function setChartStyle(nextStyle: ExplorerChartStyle) {
+  function setComparePreset(nextMode: Exclude<ActivityComparePresetMode, 'off' | 'custom_anchor_date' | 'custom_range'>) {
+    compareMode.value = nextMode
+    compareError.value = null
+  }
+
+  function disableCompare() {
+    compareMode.value = 'off'
+    compareData.value = null
+    compareError.value = null
+    loadingCompare.value = false
+  }
+
+  function setCompareAnchor(nextAnchorDate: string) {
+    const normalizedAnchor = normalizeDateInput(nextAnchorDate)
+    if (!normalizedAnchor) {
+      return false
+    }
+    compareAnchorDate.value = normalizedAnchor
+    compareMode.value = 'custom_anchor_date'
+    compareError.value = null
+    return true
+  }
+
+  function setCompareCustomRange(range: DateRange) {
+    const normalizedRange = {
+      from: normalizeDateInput(range.from),
+      to: normalizeDateInput(range.to),
+    }
+    if (!isValidDateRange(normalizedRange)) {
+      return false
+    }
+    compareCustomRange.value = normalizedRange
+    compareMode.value = 'custom_range'
+    compareError.value = null
+    return true
+  }
+
+  function setChartStyle(nextStyle: ActivityChartStyle) {
     chartStyle.value = nextStyle
   }
 
@@ -651,13 +815,13 @@ export const useExplorerStore = defineStore('explorer', () => {
     visibleExtraFilterKinds.value = []
   }
 
-  function addExtraFilter(kind: ExplorerExtraFilterKind) {
+  function addExtraFilter(kind: ActivityExtraFilterKind) {
     if (!visibleExtraFilterKinds.value.includes(kind)) {
       visibleExtraFilterKinds.value = [...visibleExtraFilterKinds.value, kind]
     }
   }
 
-  function removeExtraFilter(kind: ExplorerExtraFilterKind) {
+  function removeExtraFilter(kind: ActivityExtraFilterKind) {
     visibleExtraFilterKinds.value = visibleExtraFilterKinds.value.filter((value) => value !== kind)
     switch (kind) {
       case 'author':
@@ -723,7 +887,7 @@ export const useExplorerStore = defineStore('explorer', () => {
         body: payload.description || null,
         tags: payload.tags,
         commitRefs: [],
-        scope: { surface: 'explorer' },
+        scope: { surface: 'activity' },
       })
     }
     annotationDialogOpen.value = false
@@ -774,6 +938,19 @@ export const useExplorerStore = defineStore('explorer', () => {
     groupBy.value = normalizeGroupBy(query.group)
     chartStyle.value = normalizeChartStyle(query.style)
     selectedSeriesKey.value = normalizeSeriesKey(query.series)
+    compareMode.value = normalizeCompareMode(query.compareMode)
+    compareAnchorDate.value = compareMode.value === 'custom_anchor_date'
+      ? normalizeDateInput(query.compareAnchor)
+      : ''
+    compareCustomRange.value = compareMode.value === 'custom_range'
+      ? normalizeOptionalDateRange(query.compareFrom, query.compareTo)
+      : null
+    if (compareMode.value === 'custom_anchor_date' && !compareAnchorDate.value) {
+      compareMode.value = 'off'
+    }
+    if (compareMode.value === 'custom_range' && !compareCustomRange.value) {
+      compareMode.value = 'off'
+    }
     initialized.value = true
   }
 
@@ -793,14 +970,21 @@ export const useExplorerStore = defineStore('explorer', () => {
     groupBy,
     chartStyle,
     showLegend,
+    compareMode,
+    compareAnchorDate,
+    compareCustomRange,
+    compareOverlayVisible,
+    compareData,
     analytics,
     dayDetail,
     annotations,
     loadingAnalytics,
+    loadingCompare,
     loadingDay,
     loadingAnnotations,
     loadingCommitDetail,
     analyticsError,
+    compareError,
     dayError,
     annotationsError,
     commitDetailError,
@@ -812,6 +996,10 @@ export const useExplorerStore = defineStore('explorer', () => {
     rangeDays,
     effectiveDateRange,
     timeLabel,
+    compareEnabled,
+    compareModeLabel,
+    compareReferenceLabel,
+    compareDeltaLabel,
     repoOptions,
     authorOptions,
     languageOptions,
@@ -831,14 +1019,19 @@ export const useExplorerStore = defineStore('explorer', () => {
     displayCommitFiles,
     buildQuery,
     loadAnalytics,
+    loadCompare,
     loadDay,
     loadAnnotationsForDay,
     loadSelectedCommitDetail,
-    refreshExplorer,
+    refreshActivity,
     selectDate,
     selectChartPoint,
     selectCommit,
     setMetric,
+    setComparePreset,
+    disableCompare,
+    setCompareAnchor,
+    setCompareCustomRange,
     setRangePreset,
     setCustomDateRange,
     setGroupBy,
@@ -895,6 +1088,16 @@ function queriesMatch(
   const nextChartStyle = normalizeChartStyle(nextQuery.style)
   const currentSeriesKey = normalizeSeriesKey(currentQuery.series)
   const nextSeriesKey = normalizeSeriesKey(nextQuery.series)
+  const currentCompareMode = normalizeCompareMode(currentQuery.compareMode)
+  const nextCompareMode = normalizeCompareMode(nextQuery.compareMode)
+  const currentCompareAnchor = currentCompareMode === 'custom_anchor_date' ? normalizeDateInput(currentQuery.compareAnchor) : ''
+  const nextCompareAnchor = nextCompareMode === 'custom_anchor_date' ? normalizeDateInput(nextQuery.compareAnchor) : ''
+  const currentCompareRange = currentCompareMode === 'custom_range'
+    ? normalizeOptionalDateRange(currentQuery.compareFrom, currentQuery.compareTo)
+    : null
+  const nextCompareRange = nextCompareMode === 'custom_range'
+    ? normalizeOptionalDateRange(nextQuery.compareFrom, nextQuery.compareTo)
+    : null
 
   return currentDate === nextDate &&
     currentRange === nextRange &&
@@ -912,11 +1115,15 @@ function queriesMatch(
     currentGroupBy === nextGroupBy &&
     currentSeriesKey === nextSeriesKey &&
     currentChartStyle === nextChartStyle &&
+    currentCompareMode === nextCompareMode &&
+    currentCompareAnchor === nextCompareAnchor &&
+    (currentCompareRange?.from ?? '') === (nextCompareRange?.from ?? '') &&
+    (currentCompareRange?.to ?? '') === (nextCompareRange?.to ?? '') &&
     currentRepoIds.length === nextRepoIds.length &&
     currentRepoIds.every((repoId, index) => repoId === nextRepoIds[index])
 }
 
-function normalizeRangePreset(value: unknown, from?: unknown, to?: unknown): ExplorerRangePreset {
+function normalizeRangePreset(value: unknown, from?: unknown, to?: unknown): ActivityRangePreset {
   if (normalizeDateInput(from) && normalizeDateInput(to)) {
     return 'custom'
   }
@@ -925,7 +1132,7 @@ function normalizeRangePreset(value: unknown, from?: unknown, to?: unknown): Exp
     : '14d'
 }
 
-function normalizeCustomDateRange(from: unknown, to: unknown, preset: ExplorerRangePreset): DateRange {
+function normalizeCustomDateRange(from: unknown, to: unknown, preset: ActivityRangePreset): DateRange {
   const normalizedRange = {
     from: normalizeDateInput(from),
     to: normalizeDateInput(to),
@@ -934,6 +1141,14 @@ function normalizeCustomDateRange(from: unknown, to: unknown, preset: ExplorerRa
     return normalizedRange
   }
   return buildPresetDateRange(preset === 'custom' ? '14d' : preset)
+}
+
+function normalizeOptionalDateRange(from: unknown, to: unknown): DateRange | null {
+  const normalizedRange = {
+    from: normalizeDateInput(from),
+    to: normalizeDateInput(to),
+  }
+  return isValidDateRange(normalizedRange) ? normalizedRange : null
 }
 
 function normalizeSelection(values: string[]) {
@@ -958,21 +1173,31 @@ function normalizeSelectionFromQuery(value: unknown): string[] {
 }
 
 function normalizeGroupBy(value: unknown): GroupBy {
-  return EXPLORER_GROUP_BY_OPTIONS.some((option) => option.value === value) ? value as GroupBy : 'author'
+  return ACTIVITY_GROUP_BY_OPTIONS.some((option) => option.value === value) ? value as GroupBy : 'author'
 }
 
-function normalizeMetric(value: unknown): ExplorerMetric {
-  return EXPLORER_METRIC_OPTIONS.some((option) => option.value === value) ? value as ExplorerMetric : 'commit_count'
+function normalizeMetric(value: unknown): ActivityMetric {
+  return ACTIVITY_METRIC_OPTIONS.some((option) => option.value === value) ? value as ActivityMetric : 'commit_count'
 }
 
-function normalizeChartStyle(value: unknown): ExplorerChartStyle {
-  return EXPLORER_CHART_STYLE_OPTIONS.some((option) => option.value === value)
-    ? value as ExplorerChartStyle
+function normalizeChartStyle(value: unknown): ActivityChartStyle {
+  return ACTIVITY_CHART_STYLE_OPTIONS.some((option) => option.value === value)
+    ? value as ActivityChartStyle
     : 'line'
 }
 
 function normalizeSeriesKey(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function normalizeCompareMode(value: unknown): ActivityComparePresetMode {
+  return value === 'previous_period'
+    || value === 'previous_year'
+    || value === 'custom_anchor_date'
+    || value === 'custom_range'
+    || value === 'off'
+    ? value
+    : 'off'
 }
 
 function toMessage(caught: unknown) {

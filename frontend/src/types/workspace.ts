@@ -23,6 +23,7 @@ export type FilterOperator = 'in' | 'not_in' | 'eq' | 'neq' | 'gte' | 'lte' | 'b
 export type ComparisonModeV2 = 'none' | 'previous_period' | 'same_period_last_year' | 'custom_period'
 export type AnnotationTypeV2 = 'feature' | 'incident' | 'project' | 'note'
 export type AnnotationTargetKind = 'global_date' | 'widget_point'
+export type ActivityCompareMode = 'off' | 'previous_period' | 'previous_year' | 'custom_anchor_date' | 'custom_range'
 
 export interface PageTimeRange {
   preset?: string | null
@@ -273,6 +274,63 @@ export interface DayDrilldownResponse {
   files: DrilldownFileRow[]
   contributors: DrilldownContributorRow[]
   jiraIssues: DrilldownIssueRow[]
+}
+
+export interface ActivityCompareRequest {
+  current: { from: string; to: string }
+  mode: Exclude<ActivityCompareMode, 'off'>
+  customAnchorDate?: string | null
+  customRange?: { from: string; to: string } | null
+  metric: 'lines_added' | 'lines_removed' | 'net_lines' | 'commit_count' | 'file_count'
+  groupBy: 'none' | 'author' | 'repo' | 'language' | 'category' | 'subtype' | 'product_code' | 'cohort'
+  filters: {
+    authorIds: string[]
+    repoIds: string[]
+    languages: string[]
+    categories: string[]
+    subtypes: string[]
+    productCodes: string[]
+    cohorts: string[]
+  }
+}
+
+export interface ActivityComparePoint {
+  day: string
+  value: number
+}
+
+export interface ActivityCompareSeries {
+  key: string
+  label: string
+  points: ActivityComparePoint[]
+}
+
+export interface ActivityCompareTotals {
+  linesAdded: number
+  linesRemoved: number
+  netLines: number
+  commitCount: number
+  fileCount: number
+}
+
+export interface ActivityComparePeriod {
+  from: string
+  to: string
+  totals: ActivityCompareTotals
+}
+
+export interface ActivityCompareResponse {
+  current: ActivityComparePeriod
+  reference: ActivityComparePeriod
+  delta: {
+    absolute: number
+    percentage: number | null
+  }
+  series: {
+    current: ActivityCompareSeries[]
+    reference: ActivityCompareSeries[]
+    alignedReference: ActivityCompareSeries[]
+  }
 }
 
 export interface JiraSettingsResponse {

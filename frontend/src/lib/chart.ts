@@ -30,13 +30,22 @@ use([
   TitleComponent,
 ])
 
-const palette = ['#0f766e', '#2563eb', '#f97316', '#c026d3', '#ea580c', '#16a34a']
+function chartPalette(): string[] {
+  return [
+    getCssVar('--cf-accent') || '#6366f1',
+    '#2563eb',
+    '#f97316',
+    '#c026d3',
+    '#ea580c',
+    '#16a34a',
+  ]
+}
 
-const accentByToken: Record<string, string> = {
-  accent: '#0f766e',
-  warning: '#d97706',
-  danger: '#dc2626',
-  success: '#16a34a',
+const accentByToken: Record<string, () => string> = {
+  accent: () => getCssVar('--cf-accent') || '#6366f1',
+  warning: () => '#d97706',
+  danger: () => '#dc2626',
+  success: () => '#16a34a',
 }
 
 function getCssVar(name: string): string {
@@ -54,7 +63,9 @@ export function buildChartOption(args: {
   legendVisible: boolean
   anonymizeAuthors: boolean
   authorLabelById: Record<string, string>
+  animateCharts: boolean
 }): EChartsOption {
+  const palette = chartPalette()
   const currentSeries = (args.analytics?.series ?? []).map((series, index) => ({
     name: resolveSeriesLabel(series.key, series.label, args.anonymizeAuthors, args.authorLabelById),
     type: 'line' as const,
@@ -74,7 +85,7 @@ export function buildChartOption(args: {
               name: annotation.title,
               xAxis: annotation.day,
               lineStyle: {
-                color: accentByToken[annotation.colorToken ?? 'accent'] ?? accentByToken.accent,
+                color: (accentByToken[annotation.colorToken ?? 'accent'] ?? accentByToken.accent)(),
               },
             })),
           }
@@ -104,7 +115,8 @@ export function buildChartOption(args: {
   return {
     backgroundColor: 'transparent',
     color: palette,
-    animationDuration: 300,
+    animation: args.animateCharts,
+    animationDuration: args.animateCharts ? 300 : 0,
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross' },
@@ -151,6 +163,7 @@ export function buildChartOption(args: {
 }
 
 export function getSeriesColor(index: number): string {
+  const palette = chartPalette()
   return palette[index % palette.length]
 }
 

@@ -1,5 +1,7 @@
 export type Metric = 'lines_added' | 'lines_removed' | 'net_lines' | 'commit_count' | 'file_count'
 export type ChartLibrary = 'echarts' | 'chartjs'
+export type AppearanceMode = 'system' | 'light' | 'dark'
+export type AppearanceAccent = 'indigo' | 'blue' | 'amber'
 
 export type GroupBy =
   | 'none'
@@ -62,6 +64,18 @@ export interface ConfigFileResponse {
   path: string
   yaml: string
   restartRequired: boolean
+  savedAt: string | null
+}
+
+export interface AppearanceConfig {
+  mode: AppearanceMode
+  accent: AppearanceAccent
+  animateCharts: boolean
+  compactRows: boolean
+}
+
+export interface AppearanceConfigResponse {
+  appearance: AppearanceConfig
   savedAt: string | null
 }
 
@@ -131,6 +145,7 @@ export interface EditableDashboardConfig {
     from: string | null
     to: string | null
   }
+  appearance: AppearanceConfig
 }
 
 export interface ConfigBuilderResponse extends ConfigFileResponse {

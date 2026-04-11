@@ -1,4 +1,6 @@
 import type {
+  ActivityCompareRequest,
+  ActivityCompareResponse,
   AnnotationV2,
   AnnotationCommitRef,
   AnnotationTargetKind,
@@ -294,7 +296,14 @@ export function loadDayDrilldown(payload: {
   })
 }
 
-export function getExplorerCommitDetail(repoId: string, commitSha: string) {
+export function compareActivity(payload: ActivityCompareRequest) {
+  return request<ActivityCompareResponse>('/api/v2/activity/compare', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getActivityCommitDetail(repoId: string, commitSha: string) {
   return request<CommitDetailResponse>(`/api/v2/explorer/commit/${encodeURIComponent(repoId)}/${encodeURIComponent(commitSha)}`)
 }
 

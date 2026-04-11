@@ -100,3 +100,9 @@ uiDefaults:
 
 syncWindow:
   from: "2025-01-01"
+
+appearance:
+  mode: "system"
+  accent: "indigo"
+  animateCharts: true
+  compactRows: false

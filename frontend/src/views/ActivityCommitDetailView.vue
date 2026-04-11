@@ -5,12 +5,12 @@ import { ArrowLeft } from 'lucide-vue-next'
 import {
   createAnnotationV2,
   deleteAnnotationV2,
-  getExplorerCommitDetail,
+  getActivityCommitDetail,
   openCommitInEditor,
   updateAnnotationV2,
 } from '../api/workspace'
 import type { AnnotationV2, CommitDetailResponse, EditorLaunchResponse } from '../types/workspace'
-import ExplorerAnnotationModal from '../components/ExplorerAnnotationModal.vue'
+import ActivityAnnotationModal from '../components/ActivityAnnotationModal.vue'
 
 const props = defineProps<{
   repoId: string
@@ -51,7 +51,7 @@ async function loadDetail() {
   loadError.value = null
 
   try {
-    const loaded = await getExplorerCommitDetail(props.repoId, props.commitSha)
+    const loaded = await getActivityCommitDetail(props.repoId, props.commitSha)
     if (sequence !== loadSequence) return
     detail.value = loaded
     editorLaunch.value = null
@@ -251,7 +251,7 @@ watch(
       </article>
     </div>
 
-    <ExplorerAnnotationModal
+    <ActivityAnnotationModal
       :open="annotationDialogOpen"
       :annotation="editingAnnotation"
       :day="selectedDate"

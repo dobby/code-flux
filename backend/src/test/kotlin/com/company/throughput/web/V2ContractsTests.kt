@@ -1,5 +1,6 @@
 package com.company.throughput.web
 
+import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -58,6 +59,9 @@ class V2ContractsTests(
         jdbcClient.sql("DELETE FROM page_widget_instances").update()
         jdbcClient.sql("DELETE FROM widget_definitions").update()
         jdbcClient.sql("DELETE FROM dashboard_pages").update()
+        jdbcClient.sql("DELETE FROM repo_state_snapshot_breakdowns").update()
+        jdbcClient.sql("DELETE FROM repo_state_snapshots").update()
+        jdbcClient.sql("DELETE FROM file_inventory_current").update()
         jdbcClient.sql("DELETE FROM commit_file_fact").update()
         jdbcClient.sql("DELETE FROM commit_fact").update()
     }
@@ -243,6 +247,44 @@ class V2ContractsTests(
     }
 
     @Test
+    fun `codebase structure allows repos without snapshot history`() {
+        jdbcClient.sql(
+            """
+            INSERT INTO file_inventory_current (
+              repo_id, ref_name, commit_sha, file_path, language, category, subtype,
+              product_code, line_count, is_binary, updated_at
+            ) VALUES (
+              'repo-no-snapshots', 'main', 'sha-1', 'src/main/App.kt', 'kotlin', 'production', 'source',
+              'MARCANDO', 120, 0, CURRENT_TIMESTAMP
+            )
+            """.trimIndent(),
+        ).update()
+
+        mockMvc.perform(
+            post("/api/v2/codebase/structure")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "repoId": "repo-no-snapshots",
+                      "dateFrom": "2026-03-01",
+                      "dateTo": "2026-03-31",
+                      "authorIds": [],
+                      "languages": [],
+                      "categories": [],
+                      "productCodes": []
+                    }
+                    """.trimIndent(),
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.summary.repoId").value("repo-no-snapshots"))
+            .andExpect(jsonPath("$.summary.lastSnapshotDate").doesNotExist())
+            .andExpect(jsonPath("$.summary.visibleFiles").value(1))
+            .andExpect(jsonPath("$.summary.visibleLines").value(120))
+    }
+
+    @Test
     fun `open file validates repository path availability`() {
         mockMvc.perform(
             post("/api/v2/explorer/open-file")
@@ -260,5 +302,77 @@ class V2ContractsTests(
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.available").value(false))
             .andExpect(jsonPath("$.reason").isString)
+    }
+
+    @Test
+    fun `activity compare returns aligned reference series and summary metadata`() {
+        jdbcClient.sql("DELETE FROM daily_fact").update()
+        jdbcClient.sql(
+            """
+            INSERT INTO daily_fact (
+              day, repo_id, author_id, language, category, subtype, product_code,
+              lines_added, lines_removed, net_lines, commit_count, file_count
+            ) VALUES
+              ('2026-03-01', 'marcando-api', 'eli', 'kotlin', 'production', 'source', 'MARCANDO', 100, 20, 80, 2, 4),
+              ('2026-03-02', 'marcando-api', 'eli', 'kotlin', 'production', 'source', 'MARCANDO', 50, 10, 40, 1, 2),
+              ('2026-02-27', 'marcando-api', 'eli', 'kotlin', 'production', 'source', 'MARCANDO', 60, 15, 45, 1, 2),
+              ('2026-02-28', 'marcando-api', 'eli', 'kotlin', 'production', 'source', 'MARCANDO', 40, 5, 35, 1, 1)
+            """.trimIndent(),
+        ).update()
+
+        mockMvc.perform(
+            post("/api/v2/activity/compare")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "current": { "from": "2026-03-01", "to": "2026-03-02" },
+                      "mode": "custom_anchor_date",
+                      "customAnchorDate": "2026-02-28",
+                      "metric": "commit_count",
+                      "groupBy": "none",
+                      "filters": {
+                        "authorIds": ["eli"],
+                        "repoIds": ["marcando-api"],
+                        "languages": ["kotlin"],
+                        "categories": ["production"],
+                        "productCodes": ["MARCANDO"]
+                      }
+                    }
+                    """.trimIndent(),
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.current.from").value("2026-03-01"))
+            .andExpect(jsonPath("$.current.totals.commitCount").value(3))
+            .andExpect(jsonPath("$.reference.from").value("2026-02-27"))
+            .andExpect(jsonPath("$.reference.to").value("2026-02-28"))
+            .andExpect(jsonPath("$.reference.totals.commitCount").value(2))
+            .andExpect(jsonPath("$.delta.absolute").value(1))
+            .andExpect(jsonPath("$.series.current[0].key").value("total"))
+            .andExpect(jsonPath("$.series.alignedReference[0].points[0].day").value("2026-03-01"))
+            .andExpect(jsonPath("$.series.alignedReference[0].points[1].day").value("2026-03-02"))
+    }
+
+    @Test
+    fun `activity compare rejects custom ranges that do not match current span`() {
+        mockMvc.perform(
+            post("/api/v2/activity/compare")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "current": { "from": "2026-03-01", "to": "2026-03-02" },
+                      "mode": "custom_range",
+                      "customRange": { "from": "2026-02-27", "to": "2026-02-27" },
+                      "metric": "commit_count",
+                      "groupBy": "none",
+                      "filters": {}
+                    }
+                    """.trimIndent(),
+                ),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.detail", containsString("same number of days")))
     }
 }

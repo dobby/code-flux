@@ -27,11 +27,146 @@ const chartRef = ref<InstanceType<typeof VChart> | null>(null)
 const minChartHeight = 180
 const maxChartHeight = 560
 const chartHeightStorageKey = 'code-flux-activity-chart-height'
+const yAxisCutoffStorageKey = 'code-flux-activity-y-axis-cutoffs'
+const anonymizeAuthorsStorageKey = 'code-flux-activity-anonymize-authors'
+const showPointMarkersStorageKey = 'code-flux-activity-show-point-markers'
 const chartHeight = ref(loadChartHeight())
+const yAxisCutoffs = ref<Record<string, number>>(loadYAxisCutoffs())
+const yAxisCutoffDraft = ref('')
+const anonymizeAuthors = ref(loadAnonymizeAuthors())
+const showPointMarkers = ref(loadShowPointMarkers())
 const chartZoomSelecting = ref(false)
 const chartZoomed = ref(false)
 const chartSelectionStarted = ref(false)
 let chartResizeStart: { pointerId: number; startY: number; startHeight: number } | null = null
+
+const funAuthorNames = [
+  'Ada Lovelace',
+  'Alan Turing',
+  'Grace Hopper',
+  'Katherine Johnson',
+  'Margaret Hamilton',
+  'Hedy Lamarr',
+  'Marie Curie',
+  'Rosalind Franklin',
+  'Jane Goodall',
+  'Chien-Shiung Wu',
+  'Barbara Liskov',
+  'Radia Perlman',
+  'Edsger Dijkstra',
+  'Donald Knuth',
+  'Tim Berners-Lee',
+  'Linus Torvalds',
+  'Ken Thompson',
+  'Dennis Ritchie',
+  'Guido van Rossum',
+  'James Gosling',
+  'Bjarne Stroustrup',
+  'Brendan Eich',
+  'Yukihiro Matsumoto',
+  'Sophie Wilson',
+  'Frances Allen',
+  'Annie Easley',
+  'Dorothy Vaughan',
+  'Mary Jackson',
+  'Sally Ride',
+  'Mae Jemison',
+  'Neil Armstrong',
+  'Buzz Aldrin',
+  'Kip Thorne',
+  'Richard Feynman',
+  'Carl Sagan',
+  'Stephen Hawking',
+  'Niels Bohr',
+  'Albert Einstein',
+  'Isaac Newton',
+  'Galileo Galilei',
+  'Nikola Tesla',
+  'James Clerk Maxwell',
+  'Michael Faraday',
+  'Charles Darwin',
+  'Louis Pasteur',
+  'Dmitri Mendeleev',
+  'Vera Rubin',
+  'Jocelyn Bell Burnell',
+  'Emmy Noether',
+  'Hypatia',
+  'Tony Stark',
+  'Shuri',
+  'Bruce Banner',
+  'Peter Parker',
+  'Reed Richards',
+  'Riri Williams',
+  'Hank Pym',
+  'Janet van Dyne',
+  'Wanda Maximoff',
+  'Carol Danvers',
+  'Natasha Romanoff',
+  'Steve Rogers',
+  'Sam Wilson',
+  'TChalla',
+  'Okoye',
+  'Kamala Khan',
+  'Miles Morales',
+  'Gwen Stacy',
+  'Stephen Strange',
+  'Scott Lang',
+  'Hope van Dyne',
+  'Jean Grey',
+  'Kitty Pryde',
+  'Ororo Munroe',
+  'Forge',
+  'Kaylee Frye',
+  'Geordi La Forge',
+  'BElanna Torres',
+  'Montgomery Scott',
+  'Nyota Uhura',
+  'Spock',
+  'Data',
+  'Seven of Nine',
+  'Leia Organa',
+  'Rey Skywalker',
+  'Ahsoka Tano',
+  'Sabine Wren',
+  'Hera Syndulla',
+  'Cassian Andor',
+  'Din Djarin',
+  'Grogu',
+  'Hermione Granger',
+  'Luna Lovegood',
+  'Minerva McGonagall',
+  'Albus Dumbledore',
+  'Gandalf',
+  'Galadriel',
+  'Bilbo Baggins',
+  'Frodo Baggins',
+  'Samwise Gamgee',
+  'Aragorn',
+  'Legolas',
+  'Eowyn',
+  'Mulan',
+  'Moana',
+  'Merida',
+  'Rapunzel',
+  'Wall-E',
+  'Eve',
+  'Doc Brown',
+  'Marty McFly',
+  'Dana Scully',
+  'Fox Mulder',
+  'Leslie Knope',
+  'Ben Wyatt',
+  'Leslie Lamport',
+  'Martin Fowler',
+  'Kent Beck',
+  'Ward Cunningham',
+  'Sandi Metz',
+  'Bret Victor',
+  'John Carmack',
+  'John Romero',
+  'Rob Pike',
+  'Brian Kernighan',
+]
 
 function loadChartHeight() {
   if (typeof window === 'undefined') {
@@ -45,9 +180,39 @@ function clampChartHeight(value: number) {
   return Math.max(minChartHeight, Math.min(maxChartHeight, Math.round(value)))
 }
 
+function loadYAxisCutoffs() {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(yAxisCutoffStorageKey) ?? '{}') as Record<string, unknown>
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([key, value]) => [key, Number(value)] as const)
+        .filter(([, value]) => Number.isFinite(value) && value > 0),
+    )
+  } catch {
+    return {}
+  }
+}
+
+function persistYAxisCutoffs() {
+  window.localStorage.setItem(yAxisCutoffStorageKey, JSON.stringify(yAxisCutoffs.value))
+}
+
+function loadAnonymizeAuthors() {
+  return typeof window !== 'undefined' && window.localStorage.getItem(anonymizeAuthorsStorageKey) === 'true'
+}
+
+function loadShowPointMarkers() {
+  return typeof window === 'undefined' || window.localStorage.getItem(showPointMarkersStorageKey) !== 'false'
+}
+
 const chartSectionStyle = computed(() => ({
   height: `${chartHeight.value}px`,
 }))
+
+const activeYAxisCutoff = computed(() => yAxisCutoffs.value[explorer.metric] ?? null)
 
 const metricNoun = computed(() => {
   switch (explorer.metric) {
@@ -122,6 +287,49 @@ const chartLegendVisible = computed(
   () => explorer.showLegend && explorer.groupBy !== 'none' && chartSeries.value.length > 1,
 )
 
+const anonymizedAuthorLabelByName = computed(() => {
+  const names = new Set<string>()
+  for (const author of dashboard.bootstrap?.authors ?? []) {
+    if (author.displayName) {
+      names.add(author.displayName)
+    }
+  }
+  for (const series of chartSeries.value) {
+    if (explorer.groupBy === 'author' && series.label) {
+      names.add(series.label)
+    }
+  }
+  for (const commit of explorer.displayCommits) {
+    if (commit.author) {
+      names.add(commit.author)
+    }
+  }
+  return new Map(
+    Array.from(names)
+      .sort((left, right) => left.localeCompare(right))
+      .map((name, index) => [name, funAuthorName(name, index)] as const),
+  )
+})
+
+function funAuthorName(name: string, salt: number) {
+  let hash = 0
+  for (const char of name) {
+    hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0
+  }
+  return funAuthorNames[Math.abs(hash + salt * 31) % funAuthorNames.length]
+}
+
+function displayAuthorName(name: string) {
+  if (!anonymizeAuthors.value) {
+    return name
+  }
+  return anonymizedAuthorLabelByName.value.get(name) ?? 'Contributor'
+}
+
+function displaySeriesLabel(entry: { key: string; label: string }) {
+  return explorer.groupBy === 'author' ? displayAuthorName(entry.label) : entry.label
+}
+
 const chartCanvasStyle = computed(() => {
   if (explorer.chartStyle !== 'bar') {
     return { width: '100%' }
@@ -150,11 +358,11 @@ const chartOption = computed<EChartsOption>(() => {
 
     return {
       id: entry.key,
-      name: entry.label,
+      name: displaySeriesLabel(entry),
       type: seriesType,
       smooth: explorer.chartStyle !== 'bar',
-      showSymbol: explorer.chartStyle !== 'bar',
-      symbolSize: explorer.chartStyle === 'bar' ? 0 : 6,
+      showSymbol: explorer.chartStyle !== 'bar' && showPointMarkers.value,
+      symbolSize: explorer.chartStyle === 'bar' || !showPointMarkers.value ? 0 : 6,
       emphasis: { focus: 'series' as const },
       lineStyle: explorer.chartStyle === 'bar' ? undefined : { width: 2.5, color },
       areaStyle: explorer.chartStyle === 'area' ? { opacity: 0.12, color } : undefined,
@@ -210,7 +418,7 @@ const chartOption = computed<EChartsOption>(() => {
 
     return {
       id: `${entry.key}::reference`,
-      name: `${entry.label} reference`,
+      name: `${displaySeriesLabel(entry)} reference`,
       type: 'line' as const,
       smooth: false,
       showSymbol: false,
@@ -244,7 +452,7 @@ const chartOption = computed<EChartsOption>(() => {
     legend: chartLegendVisible.value
       ? {
           type: 'scroll',
-          data: chartSeries.value.map((entry) => entry.label),
+          data: chartSeries.value.map((entry) => displaySeriesLabel(entry)),
           orient: 'vertical',
           top: 8,
           right: 0,
@@ -294,6 +502,7 @@ const chartOption = computed<EChartsOption>(() => {
       type: 'value',
       minInterval: 1,
       splitNumber: 4,
+      max: activeYAxisCutoff.value ?? undefined,
       axisLabel: {
         show: true,
         color: isDark.value ? '#8e9abb' : '#7b8aa5',
@@ -410,6 +619,11 @@ function handleChartDataZoom() {
   chartZoomed.value = true
   chartZoomSelecting.value = false
   chartSelectionStarted.value = false
+  chartRef.value?.dispatchAction({
+    type: 'takeGlobalCursor',
+    key: 'dataZoomSelect',
+    dataZoomSelectActive: false,
+  })
 }
 
 function beginChartSelection() {
@@ -425,6 +639,46 @@ function finishChartSelection() {
   chartZoomed.value = true
   chartZoomSelecting.value = false
   chartSelectionStarted.value = false
+  chartRef.value?.dispatchAction({
+    type: 'takeGlobalCursor',
+    key: 'dataZoomSelect',
+    dataZoomSelectActive: false,
+  })
+}
+
+function syncYAxisCutoffDraft() {
+  yAxisCutoffDraft.value = activeYAxisCutoff.value == null ? '' : String(activeYAxisCutoff.value)
+}
+
+function applyYAxisCutoff() {
+  const nextCutoff = Number(yAxisCutoffDraft.value)
+  if (!Number.isFinite(nextCutoff) || nextCutoff <= 0) {
+    clearYAxisCutoff()
+    return
+  }
+  yAxisCutoffs.value = {
+    ...yAxisCutoffs.value,
+    [explorer.metric]: Math.round(nextCutoff),
+  }
+  yAxisCutoffDraft.value = String(yAxisCutoffs.value[explorer.metric])
+  persistYAxisCutoffs()
+}
+
+function clearYAxisCutoff() {
+  const nextCutoffs = { ...yAxisCutoffs.value }
+  delete nextCutoffs[explorer.metric]
+  yAxisCutoffs.value = nextCutoffs
+  persistYAxisCutoffs()
+}
+
+function toggleAnonymizeAuthors() {
+  anonymizeAuthors.value = !anonymizeAuthors.value
+  window.localStorage.setItem(anonymizeAuthorsStorageKey, String(anonymizeAuthors.value))
+}
+
+function togglePointMarkers() {
+  showPointMarkers.value = !showPointMarkers.value
+  window.localStorage.setItem(showPointMarkersStorageKey, String(showPointMarkers.value))
 }
 
 function beginChartResize(event: PointerEvent) {
@@ -466,13 +720,15 @@ function resolveSeriesKey(event: { seriesId?: string; seriesName?: string }) {
   }
 
   if (typeof event.seriesName === 'string' && event.seriesName) {
-    return chartSeries.value.find((series) => series.label === event.seriesName)?.key ?? null
+    return chartSeries.value.find((series) => displaySeriesLabel(series) === event.seriesName)?.key ?? null
   }
 
   return null
 }
 
-const authorInitial = computed(() => (explorer.selectedCommit?.author ?? '?').slice(0, 1).toUpperCase())
+const authorInitial = computed(() => (
+  explorer.selectedCommit ? displayAuthorName(explorer.selectedCommit.author).slice(0, 1).toUpperCase() : '?'
+))
 
 function formatDetailTimestamp(iso: string): string {
   try {
@@ -563,6 +819,14 @@ watch(
 )
 
 watch(
+  () => explorer.metric,
+  () => {
+    syncYAxisCutoffDraft()
+  },
+  { immediate: true },
+)
+
+watch(
   () => [explorer.selectedDate, explorer.selectedSeriesKey] as const,
   ([selectedDate], [previousDate]) => {
     const requests: Array<Promise<unknown>> = [explorer.loadDay()]
@@ -608,7 +872,13 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="explorer-view">
-    <section class="explorer-chart" :style="chartSectionStyle" data-testid="activity-chart">
+    <section
+      class="explorer-chart"
+      :style="chartSectionStyle"
+      :data-y-axis-cutoff="activeYAxisCutoff ?? undefined"
+      :data-point-markers="showPointMarkers ? 'visible' : 'hidden'"
+      data-testid="activity-chart"
+    >
       <div class="explorer-chart__header">
         <div class="explorer-chart__header-main">
           <span class="explorer-chart__title">{{ explorer.metricLabel }}</span>
@@ -628,6 +898,56 @@ onBeforeUnmount(() => {
           </span>
         </div>
         <div class="explorer-chart__tools" aria-label="Chart tools">
+          <label class="explorer-chart__cutoff">
+            <span>Y max</span>
+            <input
+              v-model="yAxisCutoffDraft"
+              type="number"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              placeholder="Auto"
+              data-testid="activity-chart-y-max"
+              @keydown.enter.prevent="applyYAxisCutoff"
+            />
+          </label>
+          <button
+            class="explorer-chart__tool"
+            type="button"
+            data-testid="activity-chart-apply-y-max"
+            @click="applyYAxisCutoff"
+          >
+            Apply
+          </button>
+          <button
+            class="explorer-chart__tool"
+            type="button"
+            :disabled="activeYAxisCutoff == null"
+            data-testid="activity-chart-clear-y-max"
+            @click="clearYAxisCutoff"
+          >
+            Auto
+          </button>
+          <button
+            class="explorer-chart__tool"
+            :class="{ 'explorer-chart__tool--active': anonymizeAuthors }"
+            type="button"
+            :aria-pressed="anonymizeAuthors"
+            data-testid="activity-anonymize-authors"
+            @click="toggleAnonymizeAuthors"
+          >
+            {{ anonymizeAuthors ? 'Reveal names' : 'Anonymize' }}
+          </button>
+          <button
+            class="explorer-chart__tool"
+            :class="{ 'explorer-chart__tool--active': !showPointMarkers }"
+            type="button"
+            :aria-pressed="!showPointMarkers"
+            data-testid="activity-chart-point-markers"
+            @click="togglePointMarkers"
+          >
+            {{ showPointMarkers ? 'Hide points' : 'Show points' }}
+          </button>
           <button
             class="explorer-chart__tool"
             :class="{ 'explorer-chart__tool--active': chartZoomSelecting }"
@@ -718,7 +1038,7 @@ onBeforeUnmount(() => {
             <span class="explorer-split__commit-body">
               <span class="explorer-split__commit-subject">{{ commit.subject }}</span>
               <span class="explorer-split__commit-meta">
-                {{ commit.author }} · {{ commit.repoId }} · +{{ commit.linesAdded }} −{{ commit.linesRemoved }}
+                {{ displayAuthorName(commit.author) }} · {{ commit.repoId }} · +{{ commit.linesAdded }} −{{ commit.linesRemoved }}
               </span>
             </span>
             <span v-if="commit.issueKeys && commit.issueKeys.length" class="explorer-split__commit-tag">
@@ -747,7 +1067,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="explorer-detail__author-row">
               <span class="explorer-detail__avatar">{{ authorInitial }}</span>
-              <span class="explorer-detail__author-name">{{ explorer.selectedCommit.author }}</span>
+              <span class="explorer-detail__author-name">{{ displayAuthorName(explorer.selectedCommit.author) }}</span>
               <span class="explorer-detail__author-repo">· {{ explorer.selectedCommit.repoId }}</span>
             </div>
           </div>
@@ -948,6 +1268,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .explorer-chart__tool {
@@ -972,6 +1294,34 @@ onBeforeUnmount(() => {
 .explorer-chart__tool:disabled {
   cursor: default;
   opacity: 0.46;
+}
+
+.explorer-chart__cutoff {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--cf-border);
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.04);
+  padding: 3px 6px;
+  color: var(--cf-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.explorer-chart__cutoff input {
+  width: 78px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--cf-text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.explorer-chart__cutoff input::placeholder {
+  color: var(--cf-text-tertiary);
 }
 
 .explorer-chart__canvas-wrap {

@@ -1,0 +1,286 @@
+<style>
+  .board-note {
+    max-width: 1040px;
+    margin-bottom: 22px;
+  }
+  .direction-section {
+    margin: 28px 0 38px;
+  }
+  .direction-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 14px;
+  }
+  .direction-title h3 {
+    margin: 0;
+    font-size: 22px;
+  }
+  .direction-title p {
+    margin: 0;
+    color: #61708d;
+    font-size: 14px;
+  }
+  .variant-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+  }
+  .variant-card {
+    cursor: pointer;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.78);
+    overflow: hidden;
+    transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+  }
+  .variant-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(99, 102, 241, 0.48);
+    box-shadow: 0 18px 40px rgba(20, 40, 82, 0.12);
+  }
+  .variant-card.selected {
+    border-color: rgba(99, 102, 241, 0.9);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.13);
+  }
+  .variant-art {
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, rgba(238, 243, 251, 0.96), rgba(255, 255, 255, 0.8));
+  }
+  .variant-art svg {
+    width: 88%;
+    height: 88%;
+  }
+  .variant-body {
+    padding: 15px 17px 17px;
+  }
+  .variant-body h4 {
+    margin: 0 0 5px;
+    font-size: 17px;
+  }
+  .variant-body p {
+    margin: 0;
+    color: #61708d;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .micro-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 10px;
+  }
+  .micro-tags span {
+    font-size: 11px;
+    color: #4f5f78;
+    background: rgba(238, 243, 251, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 999px;
+    padding: 4px 7px;
+  }
+  .recommendation {
+    margin: 18px 0 26px;
+    padding: 16px 18px;
+    border: 1px solid rgba(99, 102, 241, 0.22);
+    border-radius: 18px;
+    background: rgba(99, 102, 241, 0.06);
+    color: #162033;
+  }
+  @media (max-width: 980px) {
+    .variant-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+</style>
+
+<div class="board-note">
+  <h2>Refined sketch board: Commit River, Delta Cascade, Time Slices</h2>
+  <p class="subtitle">These are still sketch-level, but tighter: each direction has three possible silhouettes. Click the specific variants that feel most like Code Flux.</p>
+  <div class="recommendation">
+    My read: <strong>Commit River B</strong> has the strongest product metaphor, <strong>Delta Cascade A</strong> is the most iconic at small size, and <strong>Time Slices C</strong> best expresses authored-time analytics.
+  </div>
+</div>
+
+<div data-multiselect>
+  <section class="direction-section">
+    <div class="direction-title">
+      <h3>Commit River</h3>
+      <p>repository history, flow, nodes, authored change</p>
+    </div>
+    <div class="variant-grid">
+      <div class="variant-card card" data-choice="commit-river-a" onclick="toggleSelect(this)">
+        <div class="variant-art">
+          <svg viewBox="0 0 320 320" fill="none">
+            <rect x="28" y="28" width="264" height="264" rx="66" fill="#f8fafc" stroke="#cbd5e1" stroke-width="5"/>
+            <path d="M88 86C140 126 82 176 136 220C180 256 234 224 246 178" stroke="#6366f1" stroke-width="20" stroke-linecap="round"/>
+            <path d="M116 80C166 112 134 164 188 196C212 210 240 206 258 190" stroke="#2f80ed" stroke-width="11" stroke-linecap="round" opacity=".72"/>
+            <circle cx="88" cy="86" r="17" fill="#45d6e1"/>
+            <circle cx="136" cy="220" r="17" fill="#45d6e1"/>
+            <circle cx="246" cy="178" r="17" fill="#f2c94c"/>
+          </svg>
+        </div>
+        <div class="variant-body">
+          <h4>A. Branch Stream</h4>
+          <p>Most organic. Reads as history and flow, less immediately “analytics.”</p>
+          <div class="micro-tags"><span>fluid</span><span>repo graph</span><span>friendly</span></div>
+        </div>
+      </div>
+
+      <div class="variant-card card" data-choice="commit-river-b" onclick="toggleSelect(this)">
+        <div class="variant-art">
+          <svg viewBox="0 0 320 320" fill="none">
+            <rect x="28" y="28" width="264" height="264" rx="66" fill="#0c1016"/>
+            <path d="M76 214C118 188 128 130 170 112C202 98 226 110 246 132" stroke="#7da8ff" stroke-width="18" stroke-linecap="round"/>
+            <path d="M76 214C126 230 166 218 196 184C222 154 236 142 264 140" stroke="#45d6e1" stroke-width="18" stroke-linecap="round"/>
+            <path d="M104 236C138 206 164 214 188 178C210 144 224 122 246 96" stroke="#f2c94c" stroke-width="11" stroke-linecap="round"/>
+            <circle cx="76" cy="214" r="18" fill="#45d6e1"/>
+            <circle cx="170" cy="112" r="14" fill="#6366f1"/>
+            <circle cx="196" cy="184" r="14" fill="#ffffff"/>
+            <circle cx="246" cy="96" r="16" fill="#f2c94c"/>
+          </svg>
+        </div>
+        <div class="variant-body">
+          <h4>B. Night Flow</h4>
+          <p>Best Tahoe candidate: dark glass base, luminous branch paths, clear foreground.</p>
+          <div class="micro-tags"><span>recommended</span><span>dark glass</span><span>layerable</span></div>
+        </div>
+      </div>
+
+      <div class="variant-card card" data-choice="commit-river-c" onclick="toggleSelect(this)">
+        <div class="variant-art">
+          <svg viewBox="0 0 320 320" fill="none">
+            <rect x="28" y="28" width="264" height="264" rx="66" fill="#ffffff" stroke="#d7deea" stroke-width="5"/>
+            <path d="M82 100H154C190 100 218 128 218 164C218 200 190 228 154 228H98" stroke="#6366f1" stroke-width="19" stroke-linecap="round"/>
+            <path d="M154 100C116 132 116 196 154 228" stroke="#45d6e1" stroke-width="14" stroke-linecap="round"/>
+            <path d="M106 166H250" stroke="#f2c94c" stroke-width="12" stroke-linecap="round"/>
+            <circle cx="82" cy="100" r="15" fill="#45d6e1"/>
+            <circle cx="218" cy="164" r="15" fill="#6366f1"/>
+            <circle cx="250" cy="166" r="15" fill="#f2c94c"/>
+          </svg>
+        </div>
+        <div class="variant-body">
+          <h4>C. Loop Merge</h4>
+          <p>More compact Dock silhouette; commit flow becomes a merge loop.</p>
+          <div class="micro-tags"><span>compact</span><span>merge</span><span>simpler</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="direction-section">
+    <div class="direction-title">
+      <h3>Delta Cascade</h3>
+      <p>diffs, velocity, change marks, upward motion</p>
+    </div>
+    <div class="variant-grid">
+      <div class="variant-card card" data-choice="delta-cascade-a" onclick="toggleSelect(this)">
+        <div class="variant-art">
+          <svg viewBox="0 0 320 320" fill="none">
+            <rect x="28" y="28" width="264" height="264" rx="66" fill="#101827"/>
+            <path d="M82 88H170L102 222H238" stroke="#7da8ff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M104 122H220M94 160H200M112 198H244" stroke="#45d6e1" stroke-width="10" stroke-linecap="round" opacity=".68"/>
+            <circle cx="238" cy="222" r="16" fill="#f2c94c"/>
+          </svg>
+        </div>
+        <div class="variant-body">
+          <h4>A. Delta Bolt</h4>
+          <p>Sharpest and most iconic. Reads fast at small sizes, but more abstract.</p>
+          <div class="micro-tags"><span>small-size</span><span>bold</span><span>abstract</span></div>
+        </div>
+      </div>
+
+      <div class="variant-card card" data-choice="delta-cascade-b" onclick="toggleSelect(this)">
+        <div class="variant-art">
+          <svg viewBox="0 0 320 320" fill="none">
+            <rect x="28" y="28" width="264" height="264" rx="66" fill="#eef3fb" stroke="#cbd5e1" stroke-width="5"/>
+            <path d="M92 94L160 74L228 94L204 142L228 190L160 230L92 190L116 142L92 94Z" fill="#ffffff" stroke="#6366f1" stroke-width="10" stroke-linejoin="round"/>
+            <path d="M116 142H204M92 190H228M160 74V230" stroke="#45d6e1" stroke-width="8" stroke-linecap="round" opacity=".75"/>
+            <path d="M122 114H190M112 168H212M132 206H188" stroke="#162033" stroke-width="8" stroke-linecap="round" opacity=".62"/>
+          </svg>
+        </div>
+        <div class="variant-body">
+          <h4>B. Diff Facet</h4>
+          <p>More premium and object-like; diff lines are embedded in a crystal form.</p>
+          <div class="micro-tags"><span>premium</span><span>object</span><span>technical</span></div>
+        </div>
+      </div>
+
+      <div class="variant-card card" data-choice="delta-cascade-c" onclick="toggleSelect(this)">
+        <div class="variant-art">
+          <svg viewBox="0 0 320 320" fill="none">
+            <rect x="28" y="28" width="264" height="264" rx="66" fill="#ffffff" stroke="#d7deea" stroke-width="5"/>
+            <path d="M88 96H214L170 144H232L122 238L160 170H96L88 96Z" fill="#6366f1" opacity=".92"/>
+            <path d="M112 118H196M106 148H168M122 178H184" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+            <path d="M196 218L238 178" stroke="#f2c94c" stroke-width="14" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="variant-body">
+          <h4>C. Patch Lightning</h4>
+          <p>Energetic change mark, closer to “flux” than “dashboard.”</p>
+          <div class="micro-tags"><span>energetic</span><span>simple</span><span>change</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="direction-section">
+    <div class="direction-title">
+      <h3>Time Slices</h3>
+      <p>authored time, daily throughput, calendar-like analytics</p>
+    </div>
+    <div class="variant-grid">
+      <div class="variant-card card" data-choice="time-slices-a" onclick="toggleSelect(this)">
+        <div class="variant-art">
+          <svg viewBox="0 0 320 320" fill="none">
+            <rect x="28" y="28" width="264" height="264" rx="66" fill="#ffffff" stroke="#d7deea" stroke-width="5"/>
+            <path d="M160 70V250" stroke="#cad5e8" stroke-width="13" stroke-linecap="round"/>
+            <path d="M92 104H214M108 144H238M76 184H202M122 224H228" stroke="#6366f1" stroke-width="14" stroke-linecap="round"/>
+            <path d="M92 104H150M108 144H186M76 184H132M122 224H206" stroke="#45d6e1" stroke-width="14" stroke-linecap="round"/>
+            <circle cx="160" cy="70" r="16" fill="#f2c94c"/>
+          </svg>
+        </div>
+        <div class="variant-body">
+          <h4>A. Timeline Bars</h4>
+          <p>Most literal analytics. Clean, but risks feeling like a generic chart app.</p>
+          <div class="micro-tags"><span>literal</span><span>readable</span><span>chart</span></div>
+        </div>
+      </div>
+
+      <div class="variant-card card" data-choice="time-slices-b" onclick="toggleSelect(this)">
+        <div class="variant-art">
+          <svg viewBox="0 0 320 320" fill="none">
+            <rect x="28" y="28" width="264" height="264" rx="66" fill="#0c1016"/>
+            <path d="M84 218C122 166 130 108 164 82C194 108 206 166 244 218" stroke="#7da8ff" stroke-width="18" stroke-linecap="round"/>
+            <path d="M92 218H238M106 178H222M124 138H204M146 98H182" stroke="#45d6e1" stroke-width="10" stroke-linecap="round" opacity=".76"/>
+            <path d="M164 82V238" stroke="#f2c94c" stroke-width="9" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="variant-body">
+          <h4>B. Time Aperture</h4>
+          <p>Timeline becomes a luminous aperture; more ownable, less obvious.</p>
+          <div class="micro-tags"><span>ownable</span><span>glow</span><span>temporal</span></div>
+        </div>
+      </div>
+
+      <div class="variant-card card" data-choice="time-slices-c" onclick="toggleSelect(this)">
+        <div class="variant-art">
+          <svg viewBox="0 0 320 320" fill="none">
+            <rect x="28" y="28" width="264" height="264" rx="66" fill="#eef3fb" stroke="#cbd5e1" stroke-width="5"/>
+            <path d="M160 72C206 112 236 162 238 226H82C84 162 114 112 160 72Z" fill="#ffffff" stroke="#6366f1" stroke-width="10"/>
+            <path d="M112 132H208M98 170H222M88 208H232" stroke="#45d6e1" stroke-width="11" stroke-linecap="round"/>
+            <path d="M160 72V226" stroke="#2f80ed" stroke-width="10" stroke-linecap="round"/>
+            <path d="M92 226C118 204 142 210 160 186C184 154 202 144 232 132" stroke="#f2c94c" stroke-width="11" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="variant-body">
+          <h4>C. Throughput Fan</h4>
+          <p>Time, distribution, and trend in one shape; strong app-icon silhouette.</p>
+          <div class="micro-tags"><span>recommended</span><span>analytics</span><span>silhouette</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>

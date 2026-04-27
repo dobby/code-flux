@@ -31,7 +31,8 @@ fi
 TMP_TRIMMED="$(mktemp "${TMPDIR:-/tmp}/code-flux-icon-trim.XXXXXX.png")"
 TMP_ICONSET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/code-flux-iconset.XXXXXX")"
 TMP_DESKTOP_MASTER="$(mktemp "${TMPDIR:-/tmp}/code-flux-desktop-icon.XXXXXX.png")"
-trap 'rm -f "$TMP_TRIMMED" "$TMP_DESKTOP_MASTER"; rm -rf "$TMP_ICONSET_DIR"' EXIT
+TMP_DESKTOP_TIFF="$(mktemp "${TMPDIR:-/tmp}/code-flux-desktop-icon.XXXXXX.tiff")"
+trap 'rm -f "$TMP_TRIMMED" "$TMP_DESKTOP_MASTER" "$TMP_DESKTOP_TIFF"; rm -rf "$TMP_ICONSET_DIR"' EXIT
 
 if [[ "$SOURCE_IMAGE" != "$ICONS_DIR/icon-master.png" ]]; then
   read -r source_width source_height <<<"$(magick "$SOURCE_IMAGE" -format '%w %h' info:)"
@@ -94,9 +95,33 @@ if command -v iconutil >/dev/null 2>&1; then
   magick "$TMP_DESKTOP_MASTER" -resize 512x512 "PNG32:$ICONSET_DIR/icon_256x256@2x.png"
   magick "$TMP_DESKTOP_MASTER" -resize 512x512 "PNG32:$ICONSET_DIR/icon_512x512.png"
   magick "$TMP_DESKTOP_MASTER" -resize 1024x1024 "PNG32:$ICONSET_DIR/icon_512x512@2x.png"
-  iconutil -c icns "$ICONSET_DIR" -o "$DESKTOP_ASSETS_DIR/icon.icns"
+  if ! iconutil -c icns "$ICONSET_DIR" -o "$DESKTOP_ASSETS_DIR/icon.icns"; then
+    if command -v tiff2icns >/dev/null 2>&1; then
+      magick "$TMP_DESKTOP_MASTER" -resize 16x16 \
+        "$TMP_DESKTOP_MASTER" -resize 32x32 \
+        "$TMP_DESKTOP_MASTER" -resize 48x48 \
+        "$TMP_DESKTOP_MASTER" -resize 128x128 \
+        "$TMP_DESKTOP_MASTER" -resize 256x256 \
+        "$TMP_DESKTOP_MASTER" -resize 512x512 \
+        "$TMP_DESKTOP_MASTER" -resize 1024x1024 \
+        "$TMP_DESKTOP_TIFF"
+      tiff2icns "$TMP_DESKTOP_TIFF" "$DESKTOP_ASSETS_DIR/icon.icns"
+    else
+      echo "Warning: iconutil failed and tiff2icns is unavailable; desktop/assets/icon.icns was not generated." >&2
+    fi
+  fi
+elif command -v tiff2icns >/dev/null 2>&1; then
+  magick "$TMP_DESKTOP_MASTER" -resize 16x16 \
+    "$TMP_DESKTOP_MASTER" -resize 32x32 \
+    "$TMP_DESKTOP_MASTER" -resize 48x48 \
+    "$TMP_DESKTOP_MASTER" -resize 128x128 \
+    "$TMP_DESKTOP_MASTER" -resize 256x256 \
+    "$TMP_DESKTOP_MASTER" -resize 512x512 \
+    "$TMP_DESKTOP_MASTER" -resize 1024x1024 \
+    "$TMP_DESKTOP_TIFF"
+  tiff2icns "$TMP_DESKTOP_TIFF" "$DESKTOP_ASSETS_DIR/icon.icns"
 else
-  echo "Warning: iconutil is unavailable; desktop/assets/icon.icns was not generated." >&2
+  echo "Warning: iconutil and tiff2icns are unavailable; desktop/assets/icon.icns was not generated." >&2
 fi
 
 echo "Generated icon assets in $PUBLIC_DIR and $DESKTOP_ASSETS_DIR"

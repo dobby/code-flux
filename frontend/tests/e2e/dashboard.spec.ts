@@ -269,6 +269,10 @@ test.describe('v2 workspace', () => {
 
     await page.getByTestId('activity-chart-zoom').click()
     await expect(page.getByTestId('activity-chart-zoom')).toHaveAttribute('aria-pressed', 'true')
+    await page.getByTestId('activity-chart-zoom').click()
+    await expect(page.getByTestId('activity-chart-zoom')).toHaveAttribute('aria-pressed', 'false')
+    await page.getByTestId('activity-chart-zoom').click()
+    await expect(page.getByTestId('activity-chart-zoom')).toHaveAttribute('aria-pressed', 'true')
 
     const canvasBox = await page.locator('.explorer-chart__canvas').boundingBox()
     expect(canvasBox).not.toBeNull()
@@ -278,6 +282,70 @@ test.describe('v2 workspace', () => {
     await page.mouse.up()
 
     await expect(page.getByTestId('activity-chart-reset-zoom')).toBeEnabled()
+  })
+
+  test('activity chart can hide point markers for smoother lines', async ({ page }) => {
+    await page.goto('/activity?range=90d&group=author')
+    await ensureLegacySync(page)
+    await page.goto('/activity?range=90d&group=author')
+
+    const chart = page.getByTestId('activity-chart')
+    await expect(chart).toHaveAttribute('data-point-markers', 'visible')
+
+    await page.getByTestId('activity-chart-point-markers').click()
+    await expect(page.getByTestId('activity-chart-point-markers')).toHaveAttribute('aria-pressed', 'true')
+    await expect(chart).toHaveAttribute('data-point-markers', 'hidden')
+
+    await page.reload()
+    await expect(page.getByTestId('activity-chart-point-markers')).toHaveAttribute('aria-pressed', 'true')
+    await expect(chart).toHaveAttribute('data-point-markers', 'hidden')
+  })
+
+  test('activity chart supports a per-metric y-axis cutoff', async ({ page }) => {
+    await page.goto('/activity?range=90d&group=none&metric=lines_removed')
+    await ensureLegacySync(page)
+    await page.goto('/activity?range=90d&group=none&metric=lines_removed')
+
+    const chart = page.getByTestId('activity-chart')
+    await expect(chart).toBeVisible()
+    await expect(page.locator('.explorer-chart__canvas canvas')).toBeVisible()
+
+    await page.getByTestId('activity-chart-y-max').fill('1000')
+    await page.getByTestId('activity-chart-apply-y-max').click()
+
+    await expect(chart).toHaveAttribute('data-y-axis-cutoff', '1000')
+    await expect(page.getByTestId('activity-chart-clear-y-max')).toBeEnabled()
+
+    await page.reload()
+    await expect(page.getByTestId('activity-chart-y-max')).toHaveValue('1000')
+    await expect(chart).toHaveAttribute('data-y-axis-cutoff', '1000')
+
+    await page.getByTestId('activity-chart-clear-y-max').click()
+    await expect(page.getByTestId('activity-chart-y-max')).toHaveValue('1000')
+    await expect(chart).not.toHaveAttribute('data-y-axis-cutoff', '1000')
+  })
+
+  test('activity can anonymize author names', async ({ page }) => {
+    await page.goto('/activity?range=90d&group=author')
+    await ensureLegacySync(page)
+    await page.goto('/activity?range=90d&group=author')
+
+    await expect(page.getByText(/Eli ·/).first()).toBeVisible()
+    await page.getByTestId('activity-anonymize-authors').click()
+
+    await expect(page.getByTestId('activity-anonymize-authors')).toHaveAttribute('aria-pressed', 'true')
+    const anonymizedMeta = await page.locator('.explorer-split__commit-meta').first().innerText()
+    expect(anonymizedMeta).not.toContain('Eli')
+    expect(anonymizedMeta).not.toContain('Contributor')
+    expect(anonymizedMeta).toContain(' · ')
+    await expect(page.getByText(/Eli ·/)).toHaveCount(0)
+
+    await page.reload()
+    await expect(page.getByTestId('activity-anonymize-authors')).toHaveAttribute('aria-pressed', 'true')
+    const reloadedMeta = await page.locator('.explorer-split__commit-meta').first().innerText()
+    expect(reloadedMeta).not.toContain('Eli')
+    expect(reloadedMeta).not.toContain('Contributor')
+    expect(reloadedMeta).toContain(' · ')
   })
 
   test('sidebar reflects the phase 1 information architecture', async ({ page }) => {

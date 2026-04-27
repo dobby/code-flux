@@ -33,30 +33,34 @@ const emit = defineEmits<{
 .usage-banner {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 14px;
+  gap: 8px;
   align-items: center;
-  padding: 14px 16px;
-  border: 1px solid rgba(245, 158, 11, 0.28);
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 251, 235, 0.98), rgba(255, 247, 214, 0.88));
+  min-height: 40px;
+  padding: 0 20px;
+  border: 0;
+  border-bottom: 1px solid rgba(234, 179, 8, 0.22);
+  border-radius: 0;
+  background: rgba(234, 179, 8, 0.08);
   color: #92400e;
 }
 
 .usage-banner__icon {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
-  background: rgba(245, 158, 11, 0.14);
+  width: 16px;
+  height: 16px;
+  background: transparent;
 }
 
 .usage-banner__content {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .usage-banner__eyebrow {
+  display: none;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -65,29 +69,37 @@ const emit = defineEmits<{
 }
 
 .usage-banner__content strong {
-  color: #78350f;
-  font-size: 14px;
-  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #162033;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .usage-banner__content p {
   margin: 0;
   color: #92400e;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .usage-banner__action {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border: none;
-  border-radius: 999px;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(234, 179, 8, 0.22);
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.72);
   color: #78350f;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -95,6 +107,13 @@ const emit = defineEmits<{
 @media (max-width: 900px) {
   .usage-banner {
     grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    padding: 8px 16px;
+  }
+
+  .usage-banner__content {
+    display: grid;
+    gap: 2px;
   }
 
   .usage-banner__action {

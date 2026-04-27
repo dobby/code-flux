@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "ios-app-icon-designer": {
+      "source": "dobby/ios-app-icon-designer",
+      "sourceType": "github",
+      "computedHash": "2bac1028adf6b5a3c938597b7f528d6b2ddba7ba5ccc5a92ee3b7f3dcf2ac7b6"
+    },
     "telegram": {
       "source": "skillhq/telegram",
       "sourceType": "github",

@@ -29,16 +29,16 @@ const form = reactive<{
   markdown: string
   body: string
 }>({
-  title: '',
-  description: '',
+  title: 'Commit Volume (Weekly)',
+  description: 'Weekly commit count across repositories',
   tags: '',
   kind: 'time_series',
   datasetKey: 'throughput_daily',
-  measureField: 'lines_added',
+  measureField: 'commits_count',
   aggregation: 'sum',
-  groupBy: 'repo',
-  timeBucket: 'day',
-  chartType: 'line',
+  groupBy: '',
+  timeBucket: 'week',
+  chartType: 'bar',
   markdown: '',
   body: '',
 })
@@ -55,6 +55,32 @@ const isEditing = computed(() => Boolean(props.widgetId))
 const isQueryWidget = computed(() => !['header_block', 'markdown_block', 'divider_block', 'spacer_block', 'day_explorer'].includes(form.kind))
 const currentDataset = computed(() => workspace.datasets.find((dataset) => dataset.key === form.datasetKey))
 const datasetOptions = computed(() => workspace.datasets.filter((dataset) => dataset.widgetKinds.includes(form.kind)))
+function editorDatasetLabel(dataset: { key: string; label: string } | undefined) {
+  if (!dataset) {
+    return 'Dataset'
+  }
+  if (dataset.key === 'throughput_daily') {
+    return 'Git Commits'
+  }
+  return dataset.label
+}
+
+const groupByDisplay = computed({
+  get() {
+    if (form.kind === 'time_series' && !form.groupBy && form.timeBucket === 'week') {
+      return '__weekly'
+    }
+    return form.groupBy
+  },
+  set(value: string) {
+    if (value === '__weekly') {
+      form.groupBy = ''
+      form.timeBucket = 'week'
+      return
+    }
+    form.groupBy = value
+  },
+})
 const usageBannerDescription = computed(() => {
   if (!currentWidget.value || currentWidget.value.usageCount <= 0) {
     return ''
@@ -69,7 +95,7 @@ const usageBannerDescription = computed(() => {
 })
 const controlSummary = computed(() => {
   if (isQueryWidget.value) {
-    return `${currentDataset.value?.label || 'Dataset'} - ${form.groupBy || 'No grouping'}`
+    return `${editorDatasetLabel(currentDataset.value)} - ${groupByDisplay.value === '__weekly' ? 'Weekly' : form.groupBy || 'No grouping'}`
   }
   if (form.kind === 'markdown_block') {
     return 'Narrative block'
@@ -300,7 +326,7 @@ onMounted(async () => {
             <span>Source</span>
             <select v-model="form.datasetKey" data-testid="widget-dataset">
               <option v-for="dataset in datasetOptions" :key="dataset.key" :value="dataset.key">
-                {{ dataset.label }}
+                {{ editorDatasetLabel(dataset) }}
               </option>
             </select>
           </label>
@@ -328,7 +354,8 @@ onMounted(async () => {
           <div v-if="isQueryWidget" class="field-grid">
             <label class="field">
               <span>Group by</span>
-              <select v-model="form.groupBy" data-testid="widget-group-by">
+              <select v-model="groupByDisplay" data-testid="widget-group-by">
+                <option v-if="form.kind === 'time_series'" value="__weekly">Weekly</option>
                 <option value="">None</option>
                 <option v-for="dimension in currentDataset?.dimensions ?? []" :key="dimension.key" :value="dimension.key">{{ dimension.label }}</option>
               </select>
@@ -468,30 +495,38 @@ onMounted(async () => {
 
 <style scoped>
 .widget-editor {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
-  padding: 8px 0 8px;
+  min-height: 100%;
+  padding: 20px 24px 24px;
 }
 
 .widget-editor__header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 14px;
+  gap: 8px;
   align-items: center;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .widget-editor__back {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
+  border-radius: 6px;
+  background: #ffffff;
   color: #334155;
   text-decoration: none;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .widget-editor__title {
@@ -500,26 +535,19 @@ onMounted(async () => {
 }
 
 .widget-editor__eyebrow {
-  margin: 0;
-  color: #64748b;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  display: none;
 }
 
 .widget-editor__title h1 {
   margin: 0;
   color: #0f172a;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .widget-editor__title p {
-  margin: 0;
-  color: #64748b;
-  font-size: 12.5px;
+  display: none;
 }
 
 .widget-editor__actions {
@@ -536,47 +564,67 @@ onMounted(async () => {
 
 .widget-editor__layout {
   display: grid;
-  grid-template-columns: 258px minmax(0, 1fr);
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .widget-editor__panel {
   min-width: 0;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 12px 28px rgba(148, 163, 184, 0.08);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: none;
+  overflow: hidden;
 }
 
 .widget-editor__panel--form {
   display: grid;
-  gap: 14px;
-  padding: 14px;
-  max-height: calc(100vh - 280px);
+  align-content: start;
+  gap: 12px;
+  padding: 16px 16px 20px;
+  max-height: none;
   overflow: auto;
 }
 
 .widget-editor__panel--preview {
+  position: relative;
   display: grid;
   gap: 12px;
-  padding: 14px;
-  min-height: calc(100vh - 308px);
-  background:
-    linear-gradient(180deg, rgba(243, 246, 252, 0.82), rgba(238, 243, 251, 0.74));
+  grid-template-rows: auto 1fr;
+  padding: 24px 32px 32px;
+  min-height: 0;
+  background: #eef3fb;
 }
 
 .widget-editor__preview-header {
+  position: absolute;
+  top: 26px;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: start;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.widget-editor__preview-header .widget-editor__eyebrow {
+  display: block;
+  margin: 0;
+  color: #a7b2c3;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .widget-editor__preview-header strong {
-  color: #0f172a;
-  font-size: 14px;
-  font-weight: 700;
+  display: none;
 }
 
 .widget-editor__loading {
@@ -590,10 +638,9 @@ onMounted(async () => {
   display: grid;
   place-items: center;
   padding: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.94));
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .editor-section {
@@ -643,7 +690,7 @@ onMounted(async () => {
 .field select {
   width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 14px;
+  border-radius: 6px;
   background: rgba(248, 250, 252, 0.92);
   color: #0f172a;
   font: inherit;
@@ -652,13 +699,13 @@ onMounted(async () => {
 
 .field input,
 .field select {
-  min-height: 40px;
-  padding: 0 12px;
+  min-height: 30px;
+  padding: 0 8px;
 }
 
 .field textarea {
   min-height: 96px;
-  padding: 12px;
+  padding: 8px;
   resize: vertical;
 }
 
@@ -679,8 +726,8 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 24px;
+  padding: 0 8px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.9);
@@ -708,7 +755,13 @@ onMounted(async () => {
 }
 
 .widget-editor__preview-stage :deep(.widget-renderer) {
-  width: min(100%, 520px);
+  width: min(100%, 480px);
+  height: 230px;
+  max-height: min(320px, 100%);
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .widget-editor__error {
@@ -719,9 +772,18 @@ onMounted(async () => {
 }
 
 @media (max-width: 1100px) {
+  .widget-editor {
+    padding: 16px;
+  }
+
   .widget-editor__header,
   .widget-editor__layout {
     grid-template-columns: 1fr;
+  }
+
+  .widget-editor__header {
+    height: auto;
+    padding: 10px 16px;
   }
 
   .widget-editor__actions {
@@ -735,6 +797,20 @@ onMounted(async () => {
   .widget-editor__panel--form,
   .widget-editor__panel--preview {
     max-height: none;
+  }
+
+  .widget-editor__preview-header {
+    position: static;
+    justify-content: space-between;
+    text-align: left;
+    pointer-events: auto;
+  }
+
+  .widget-editor__preview-header strong {
+    display: block;
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 700;
   }
 }
 </style>

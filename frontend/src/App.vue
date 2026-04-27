@@ -49,6 +49,7 @@ import {
   useContributorsStore,
 } from './stores/contributors'
 import DrilldownDrawer from './components/DrilldownDrawer.vue'
+import WorkspacePageHeaderControls from './components/WorkspacePageHeaderControls.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -86,6 +87,7 @@ const currentPage = computed(() => (
   workspace.pages.find((page) => page.id === route.params.pageId) ?? null
 ))
 
+const isPageRoute = computed(() => route.name === 'page')
 const isExplorerRoute = computed(() => route.name === 'activity' || route.name === 'activity-commit')
 const isContributorsRoute = computed(() => route.name === 'contributors')
 const isCodebaseRoute = computed(() => route.name === 'codebase' || route.name === 'codebase-repo')
@@ -211,14 +213,18 @@ const overflowExplorerFilterKinds = computed(() => (
   explorer.visibleExtraFilterKinds.filter((kind) => overflowedToolbarKeys.value.includes(`chip-${kind}`))
 ))
 
-const showInlineMetric = computed(() => isContributorsRoute.value && !overflowedToolbarKeys.value.includes('metric'))
 const showInlineDate = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('date'))
 const showInlineRepo = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('repo'))
 const showInlineAddFilter = computed(() => usesSharedFilterToolbar.value && !overflowedToolbarKeys.value.includes('add-filter'))
+const usesMetricToolbarControl = computed(() => isExplorerRoute.value || isContributorsRoute.value)
 const showInlineSecondaryControls = computed(() => isExplorerRoute.value && !overflowedToolbarKeys.value.includes('secondary'))
+const showInlineMetric = computed(() => usesMetricToolbarControl.value && !overflowedToolbarKeys.value.includes('metric'))
 const hasExplorerToolbarOverflow = computed(() => overflowedToolbarKeys.value.length > 0)
 const toolbarMetricLabel = computed(() => (
   isContributorsRoute.value ? `Metric: ${contributors.metricLabel}` : explorer.metricLabel
+))
+const toolbarMetricOptions = computed(() => (
+  isContributorsRoute.value ? CONTRIBUTOR_METRIC_OPTIONS : ACTIVITY_METRIC_OPTIONS
 ))
 const compareToolbarLabel = computed(() => (
   explorer.compareEnabled ? explorer.compareModeLabel : 'Compare'
@@ -727,7 +733,7 @@ function updateToolbarOverflow() {
   const available = header.clientWidth - title.offsetWidth - actions.offsetWidth - 88 - overflowButtonWidth
   if (available <= 0) {
     overflowedToolbarKeys.value = [
-      ...(isContributorsRoute.value ? ['metric'] : []),
+      ...(usesMetricToolbarControl.value ? ['metric'] : []),
       'date',
       ...(usesSharedFilterToolbar.value ? ['repo'] : []),
       ...(isExplorerRoute.value ? ['secondary'] : []),
@@ -744,7 +750,7 @@ function updateToolbarOverflow() {
 
   const baseKeys: string[] = []
   const optionalKeys = [
-    ...(isContributorsRoute.value ? ['metric'] : []),
+    ...(usesMetricToolbarControl.value ? ['metric'] : []),
     'date',
     ...(usesSharedFilterToolbar.value ? ['repo'] : []),
     ...(isExplorerRoute.value ? ['secondary'] : []),
@@ -1034,7 +1040,14 @@ onBeforeUnmount(() => {
     </main>
 
     <header ref="contentChromeRef" class="content-chrome" data-testid="app-header">
-      <span ref="contentChromeTitleRef" class="content-chrome__title">{{ currentSectionLabel }}</span>
+      <span
+        ref="contentChromeTitleRef"
+        class="content-chrome__title"
+        :data-testid="route.name === 'page' ? 'page-toolbar-title' : undefined"
+      >
+        {{ currentSectionLabel }}
+      </span>
+      <WorkspacePageHeaderControls v-if="isPageRoute && currentPage" :page-id="currentPage.id" />
       <template v-if="usesSharedFilterToolbar">
         <div ref="explorerToolbarRef" class="content-chrome__explorer-toolbar">
           <div class="content-chrome__toolbar-group">
@@ -1117,8 +1130,8 @@ onBeforeUnmount(() => {
               aria-controls="explorer-filter-menu"
               @click="toggleExplorerFilterMenu"
             >
-              <Filter :size="13" />
-              <span>{{ explorer.activeFilterCount ? `+ Filter (${explorer.activeFilterCount})` : '+ Filter' }}</span>
+              <Plus :size="12" />
+              <span>Filter</span>
             </button>
             </div>
           </div>
@@ -1167,7 +1180,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div ref="explorerToolbarMeasureRef" class="content-chrome__explorer-toolbar-measure" aria-hidden="true">
-            <div v-if="isContributorsRoute" class="content-chrome__toolbar-item" data-measure-key="metric">
+            <div v-if="usesMetricToolbarControl" class="content-chrome__toolbar-item" data-measure-key="metric">
               <div class="content-chrome__pill">
                 <BarChart3 v-if="!isContributorsRoute" :size="13" />
                 <span>{{ toolbarMetricLabel }}</span>
@@ -1206,8 +1219,8 @@ onBeforeUnmount(() => {
             </div>
             <div class="content-chrome__toolbar-item" data-measure-key="add-filter">
               <div class="content-chrome__ghost">
-                <Filter :size="13" />
-                <span>{{ explorer.activeFilterCount ? `+ Filter (${explorer.activeFilterCount})` : '+ Filter' }}</span>
+                <Plus :size="12" />
+                <span>Filter</span>
               </div>
             </div>
             <div
@@ -1242,7 +1255,7 @@ onBeforeUnmount(() => {
             :style="{ top: explorerMetricMenuStyle.top, left: explorerMetricMenuStyle.left }"
           >
               <button
-                v-for="option in isContributorsRoute ? CONTRIBUTOR_METRIC_OPTIONS : ACTIVITY_METRIC_OPTIONS"
+                v-for="option in toolbarMetricOptions"
                 :key="option.value"
                 class="content-chrome__menu-option"
                 role="menuitemradio"
@@ -1544,8 +1557,9 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </template>
-      <div class="content-chrome__spacer" />
-      <div ref="contentChromeActionsRef" class="content-chrome__actions">
+      <template v-if="!isPageRoute">
+        <div class="content-chrome__spacer" />
+        <div ref="contentChromeActionsRef" class="content-chrome__actions">
         <template v-if="isExplorerRoute">
           <button
             class="content-chrome__ghost"
@@ -1638,21 +1652,21 @@ onBeforeUnmount(() => {
               >
                 <span class="content-chrome__menu-option-main">
                   <BarChart3 :size="12" />
-                  {{ explorer.metricLabel }}
+                  {{ toolbarMetricLabel }}
                 </span>
                 <ChevronDown :size="12" class="content-chrome__menu-caret" :class="{ 'is-open': isExplorerOverflowPanelOpen('metric') }" />
               </button>
               <div v-if="isExplorerOverflowPanelOpen('metric')" class="content-chrome__menu-accordion-body">
                 <button
-                  v-for="option in ACTIVITY_METRIC_OPTIONS"
+                  v-for="option in toolbarMetricOptions"
                   :key="option.value"
                   class="content-chrome__menu-option"
                   role="menuitemradio"
-                  :aria-checked="explorer.metric === option.value"
+                  :aria-checked="isContributorsRoute ? contributors.metric === option.value : explorer.metric === option.value"
                   type="button"
-                  @click="explorer.setMetric(option.value)"
+                  @click="selectToolbarMetric(option.value)"
                 >
-                  <Check v-if="explorer.metric === option.value" :size="12" />
+                  <Check v-if="isContributorsRoute ? contributors.metric === option.value : explorer.metric === option.value" :size="12" />
                   <span v-else class="content-chrome__menu-check-placeholder" />
                   {{ option.label }}
                 </button>
@@ -2007,7 +2021,8 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <LoaderCircle v-if="dashboard.syncStatus?.running" class="spin" :size="14" style="color: var(--cf-accent)" />
-      </div>
+        </div>
+      </template>
     </header>
 
     <div class="app-shell__floating-controls" data-testid="app-floating-controls">

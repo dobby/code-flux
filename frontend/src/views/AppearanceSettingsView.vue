@@ -209,20 +209,20 @@ async function handleCompactRowsToggle() {
 
 .appearance-settings__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
 }
 
 .appearance-card {
   border: 1px solid color-mix(in srgb, var(--cf-border) 84%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--cf-surface) 98%, transparent);
+  background: #ffffff;
   box-shadow: none;
   overflow: hidden;
 }
 
 .appearance-card__title {
-  padding: 10px 14px 8px;
+  padding: 10px 12px 2px;
   border-bottom: 1px solid color-mix(in srgb, var(--cf-border) 68%, transparent);
   font-size: 10px;
   font-weight: 700;
@@ -240,8 +240,8 @@ async function handleCompactRowsToggle() {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
-  min-height: 58px;
-  padding: 10px 14px;
+  min-height: 52px;
+  padding: 8px 12px;
   border-top: 1px solid color-mix(in srgb, var(--cf-border) 68%, transparent);
 }
 

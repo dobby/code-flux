@@ -331,6 +331,7 @@ watch(
 .commit-detail__panel {
   display: grid;
   gap: 12px;
+  align-content: start;
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 10px;
   padding: 12px;
@@ -341,9 +342,11 @@ watch(
 .commit-detail__summary {
   display: grid;
   gap: 10px;
+  align-content: start;
   border-radius: 10px;
   padding: 12px;
-  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: #ffffff;
 }
 
 .commit-detail__summary strong {
@@ -358,9 +361,9 @@ watch(
 }
 
 .commit-detail__stats article {
-  border-radius: 8px;
-  padding: 9px 10px;
-  background: rgba(255, 255, 255, 0.94);
+  border-radius: 0;
+  padding: 9px 10px 4px 0;
+  background: transparent;
 }
 
 .commit-detail__stats span {
@@ -384,11 +387,11 @@ watch(
 .commit-detail__annotation,
 .commit-detail__file {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 10px;
-  padding: 10px 11px;
-  background: rgba(248, 250, 252, 0.96);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
   text-align: left;
 }
 
@@ -445,6 +448,20 @@ watch(
 .commit-detail__file {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.commit-detail__file div,
+.commit-detail__file strong,
+.commit-detail__file p {
+  min-width: 0;
+}
+
+.commit-detail__file strong,
+.commit-detail__file p {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .commit-detail__file span {

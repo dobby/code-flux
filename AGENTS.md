@@ -16,6 +16,11 @@
 - Treat `config/config.yaml` as private/local and do not commit it.
 - Use `config/config.example.yaml` as the public template.
 
+## Charts
+
+- Charts must use `ECharts`.
+- To match a desired chart look, use `ECharts` options and chart styling rather than replacing charts with hand-built DOM, SVG, canvas, or faux-chart approximations.
+
 ## Status Updates
 
 - After any major completion or verification stage, send a brief Telegram status update to the `Code Flux` Telegram group using the configured `telegram` CLI.

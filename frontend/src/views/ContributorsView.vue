@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import VChart from 'vue-echarts'
 import type { EChartsOption } from 'echarts'
+import '../lib/chart'
 import {
   Activity,
   FileCode2,
@@ -20,17 +21,6 @@ import { useAppearanceStore } from '../stores/appearance'
 const explorer = useActivityStore()
 const contributors = useContributorsStore()
 const appearance = useAppearanceStore()
-
-function sampleEvenly<T>(items: T[], count: number) {
-  if (items.length <= count) {
-    return items
-  }
-
-  return Array.from({ length: count }, (_, index) => {
-    const itemIndex = Math.round((index / Math.max(count - 1, 1)) * (items.length - 1))
-    return items[itemIndex]
-  })
-}
 
 const refreshKey = computed(() => [
   contributors.metric,
@@ -60,67 +50,126 @@ const filesChangedTotal = computed(() => {
   return Math.round(contributors.summaryTotals.files_changed_count ?? 0).toLocaleString('en-US')
 })
 
-const trendBarValues = computed(() => {
-  const sampledDays = sampleEvenly(contributors.trendDays, Math.min(8, contributors.trendDays.length))
-  if (!sampledDays.length) {
+function sampleEvenly<T>(values: T[], count: number): T[] {
+  if (count <= 0 || values.length === 0) {
+    return []
+  }
+  if (values.length <= count) {
+    return values
+  }
+
+  const lastIndex = values.length - 1
+  const sampled: T[] = []
+  const seen = new Set<number>()
+
+  for (let index = 0; index < count; index += 1) {
+    const scaledIndex = Math.round((index * lastIndex) / Math.max(count - 1, 1))
+    if (seen.has(scaledIndex)) {
+      continue
+    }
+    seen.add(scaledIndex)
+    sampled.push(values[scaledIndex])
+  }
+
+  return sampled
+}
+
+function normalizeChartHeights(values: number[], minHeight = 38, maxHeight = 122) {
+  if (!values.length) {
     return []
   }
 
-  const totals = sampledDays.map((day) => {
-    let value = 0
-    for (const series of contributors.trendSeries.slice(0, 4)) {
-      const point = series.points.find((entry) => entry.day === day)
-      value += Math.max(0, point?.value ?? 0)
-    }
-    return value
-  })
+  const domainMin = Math.min(...values)
+  const domainMax = Math.max(...values)
 
-  return sampledDays.map((day, index) => ({
+  if (domainMin === domainMax) {
+    return values.map(() => Math.round((minHeight + maxHeight) / 2))
+  }
+
+  return values.map((value) => {
+    const ratio = (value - domainMin) / (domainMax - domainMin)
+    return Math.round(minHeight + ratio * (maxHeight - minHeight))
+  })
+}
+
+const trendBarSamples = computed(() => {
+  if (!contributors.trendDays.length || !contributors.trendSeries.length) {
+    return []
+  }
+
+  const sampledDays = sampleEvenly(
+    contributors.trendDays.map((day, index) => ({ day, index })),
+    8,
+  )
+  const palette = ['#C7D2FE', '#A5B4FC', '#818CF8', '#6366F1', '#8B5CF6', '#4F46E5', '#A5B4FC', '#6366F1']
+  const totals = sampledDays.map(({ day, index }, paletteIndex) => ({
     day,
-    value: totals[index],
-    color: index % 2 === 1 ? appearance.accentColor : '#cbd5e1',
+    rawValue: contributors.trendSeries
+      .slice(0, 4)
+      .reduce((sum, series) => sum + Math.max(0, Number(series.points[index]?.value ?? 0)), 0),
+    color: palette[paletteIndex % palette.length],
+  }))
+  const heights = normalizeChartHeights(totals.map((entry) => entry.rawValue))
+
+  return totals.map((entry, index) => ({
+    ...entry,
+    value: heights[index] ?? 0,
   }))
 })
 
-const trendChartOption = computed<EChartsOption>(() => {
-  const values = trendBarValues.value
-  const maxValue = Math.max(...values.map((entry) => entry.value), 1)
+const trendChartOption = computed<EChartsOption | null>(() => {
+  if (!trendBarSamples.value.length) {
+    return null
+  }
 
   return {
     backgroundColor: 'transparent',
     animation: appearance.animateCharts,
-    animationDuration: appearance.animateCharts ? 250 : 0,
+    animationDuration: appearance.animateCharts ? 260 : 0,
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: unknown) => {
+        const row = ((params as { data?: { day?: string; rawValue?: number } | null } | null)?.data ?? null)
+        if (!row) {
+          return ''
+        }
+        return `${row.day}<br/>${formatContributorMetric(contributors.metric, row.rawValue ?? 0)}`
+      },
+    },
     grid: {
-      left: '57%',
-      right: 0,
-      top: 2,
-      bottom: 0,
+      left: '8%',
+      right: '52%',
+      top: 14,
+      bottom: 6,
       containLabel: false,
     },
-    tooltip: { show: false },
     xAxis: {
       type: 'category',
-      data: values.map((entry) => entry.day),
-      show: false,
+      data: trendBarSamples.value.map((entry) => entry.day),
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { show: false },
     },
     yAxis: {
       type: 'value',
-      show: false,
-      max: Math.max(4, Math.round(maxValue * 1.12)),
+      max: 128,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { show: false },
+      splitLine: { show: false },
     },
     series: [
       {
         type: 'bar',
-        silent: true,
-        barWidth: 28,
-        barMaxWidth: 28,
-        barMinHeight: 8,
+        barWidth: 18,
         barCategoryGap: '28%',
-        data: values.map((entry) => ({
+        data: trendBarSamples.value.map((entry) => ({
           value: entry.value,
+          rawValue: entry.rawValue,
+          day: entry.day,
           itemStyle: {
             color: entry.color,
-            borderRadius: [6, 6, 0, 0],
+            borderRadius: [5, 5, 0, 0],
           },
         })),
       },
@@ -206,7 +255,7 @@ const summaryTiles = computed(() => [
           </div>
           <div class="contributors-card__surface contributors-card__surface--chart">
             <VChart
-              v-if="trendBarValues.length"
+              v-if="trendChartOption"
               class="contributors-trend-chart"
               :autoresize="true"
               :option="trendChartOption"
@@ -240,26 +289,32 @@ const summaryTiles = computed(() => [
 <style scoped>
 .contributors-view {
   min-height: 100%;
+  height: 100%;
   padding: 20px;
   color: #162033;
+  box-sizing: border-box;
 }
 
 .contributors-layout {
   display: grid;
-  gap: 14px;
+  min-height: 100%;
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr) 160px;
+  gap: 16px;
 }
 
 .contributors-layout__top {
   display: grid;
   grid-template-columns: minmax(0, 1.03fr) minmax(360px, 0.97fr);
-  gap: 14px;
+  gap: 16px;
   align-items: stretch;
+  min-height: 0;
 }
 
 .contributors-layout__summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 
 .contributors-card,
@@ -275,8 +330,9 @@ const summaryTiles = computed(() => [
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 312px;
-  padding: 14px;
+  min-height: 0;
+  height: 100%;
+  padding: 16px;
 }
 
 .contributors-card__header {
@@ -305,7 +361,7 @@ const summaryTiles = computed(() => [
   display: grid;
   align-content: start;
   gap: 6px;
-  padding: 10px 12px;
+  padding: 12px 14px;
 }
 
 .contributors-rank-row {
@@ -337,25 +393,25 @@ const summaryTiles = computed(() => [
 .contributors-card__surface--chart {
   display: flex;
   align-items: flex-end;
-  min-height: 214px;
-  padding: 10px 14px 12px;
+  min-height: 0;
+  padding: 12px 16px;
 }
 
 .contributors-trend-chart {
   width: 100%;
-  height: 100%;
+  height: 148px;
 }
 
 .contributors-summary-card {
   display: grid;
-  gap: 6px;
-  min-height: 108px;
-  padding: 14px 16px;
+  gap: 8px;
+  min-height: 160px;
+  padding: 16px;
 }
 
 .contributors-summary-card strong {
   color: #162033;
-  font-size: 27px;
+  font-size: 32px;
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1;
@@ -413,7 +469,58 @@ const summaryTiles = computed(() => [
   border-color: rgba(239, 68, 68, 0.24);
 }
 
+.dark .contributors-view {
+  color: #d7def2;
+}
+
+.dark .contributors-card,
+.dark .contributors-summary-card,
+.dark .contributors-feedback {
+  border-color: rgba(103, 122, 160, 0.22);
+  background: rgba(19, 25, 36, 0.96);
+  box-shadow: none;
+}
+
+.dark .contributors-card__header,
+.dark .contributors-summary-card small,
+.dark .contributors-inline-state,
+.dark .contributors-feedback p {
+  color: #9aa8c7;
+}
+
+.dark .contributors-card__surface {
+  border-color: rgba(103, 122, 160, 0.18);
+  background: rgba(28, 36, 51, 0.92);
+}
+
+.dark .contributors-rank-row__name,
+.dark .contributors-rank-row__value {
+  color: #cdd7ee;
+}
+
+.dark .contributors-rank-row:first-child .contributors-rank-row__name,
+.dark .contributors-rank-row:first-child .contributors-rank-row__value,
+.dark .contributors-summary-card strong,
+.dark .contributors-feedback strong {
+  color: #f4f7ff;
+}
+
+.dark .contributors-feedback button {
+  border-color: rgba(103, 122, 160, 0.24);
+  background: rgba(28, 36, 51, 0.92);
+  color: #d7def2;
+}
+
+.dark .contributors-feedback--error {
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
 @media (max-width: 1180px) {
+  .contributors-layout {
+    height: auto;
+    grid-template-rows: auto;
+  }
+
   .contributors-layout__top,
   .contributors-layout__summary {
     grid-template-columns: 1fr;

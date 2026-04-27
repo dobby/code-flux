@@ -76,6 +76,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const error = ref<string | null>(null)
   const editMode = ref(false)
   const selectedWidgetId = ref<string | null>(null)
+  const pageWidgetPickerOpen = ref(false)
   const jiraSettings = ref<JiraSettingsResponse | null>(null)
   const jiraStatus = ref<JiraSyncStatusResponse | null>(null)
   const snapshotStatus = ref<SnapshotStatusResponse | null>(null)
@@ -157,6 +158,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     widgets.value = await listWidgetDefinitions()
   }
 
+  async function openPageWidgetPicker() {
+    await loadWidgetCatalog()
+    pageWidgetPickerOpen.value = true
+  }
+
+  function closePageWidgetPicker() {
+    pageWidgetPickerOpen.value = false
+  }
+
   async function ensurePage(pageId: string) {
     if (!initialized.value) {
       await initialize()
@@ -206,6 +216,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } finally {
       loadingWidgets[instanceId] = false
     }
+  }
+
+  async function refreshPageWidgets(pageId: string) {
+    const widgetsForPage = pageWidgets[pageId] ?? []
+    await Promise.all(widgetsForPage.map((widget) => refreshWidgetData(widget.instance.id)))
   }
 
   async function createPageAndRefresh(payload: { title: string; description?: string | null }) {
@@ -592,6 +607,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     orderedPages,
     editMode,
     selectedWidgetId,
+    pageWidgetPickerOpen,
     jiraSettings,
     jiraStatus,
     snapshotStatus,
@@ -599,9 +615,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     initialize,
     refreshBootstrap,
     loadWidgetCatalog,
+    openPageWidgetPicker,
+    closePageWidgetPicker,
     ensurePage,
     loadPage,
     refreshWidgetData,
+    refreshPageWidgets,
     createPageAndRefresh,
     renamePage,
     duplicatePageAndRefresh,

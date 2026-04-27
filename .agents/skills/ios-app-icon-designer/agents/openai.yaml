@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS App Icon Designer"
+  short_description: "Design and ship layered iOS app icons"
+  default_prompt: "Use $ios-app-icon-designer to explore directions and install a layered iOS app icon."

@@ -53,6 +53,58 @@ test.describe('v2 workspace', () => {
     await expect(page.locator(`[data-testid^="widget-tile-"]`).filter({ hasText: widgetTitle })).toBeVisible()
   })
 
+  test('customer pages use shared header controls for time range, filters, and overflow', async ({ page }) => {
+    await page.goto('/')
+
+    await createPageFromSidebar(page, `Shared header ${Date.now()}`)
+    await expect(page.getByTestId('app-header')).toContainText('Shared header')
+
+    await page.getByTestId('page-time-range').click()
+    const timeMenu = page.locator('.content-chrome__explorer-menu').filter({ hasText: 'Custom range' }).last()
+    await expect(timeMenu).toBeVisible()
+    await timeMenu.getByRole('menuitemradio', { name: /^Last 90 days$/ }).click()
+    await expect(page.getByTestId('page-time-range')).toContainText('Last 90 days')
+
+    await addPageFilter(page, { field: 'author', values: 'Ada Lovelace, Grace Hopper' })
+    await addPageFilter(page, { field: 'category', values: 'Platform initiatives' })
+    await addPageFilter(page, { field: 'branch', values: 'release/2026-q2' })
+
+    await expect(page.getByTestId('app-header')).toContainText('Author:')
+    await expect(page.getByTestId('page-add-filter')).toContainText('+ Filter (3)')
+
+    await page.setViewportSize({ width: 720, height: 900 })
+    await expect(page.getByTestId('page-toolbar-overflow')).toBeVisible()
+    await page.getByTestId('page-toolbar-overflow').click()
+    await expect(page.locator('.workspace-page-header-controls__overflow-menu')).toContainText('Branch:')
+  })
+
+  test('customer page more actions support rename, duplicate, and archive from the shared header', async ({ page }) => {
+    await page.goto('/')
+
+    await createPageFromSidebar(page, `Header actions ${Date.now()}`)
+
+    const renamedTitle = `Header actions renamed ${Date.now()}`
+    page.once('dialog', (dialog) => dialog.accept(renamedTitle))
+    await page.getByTestId('page-more-actions').click()
+    await page.getByRole('button', { name: 'Rename' }).click()
+    await expect(page.getByTestId('page-toolbar-title')).toHaveText(renamedTitle)
+
+    const countBeforeDuplicate = await page.locator('[data-testid^="sidebar-page-link-"]').count()
+    await page.getByTestId('page-more-actions').click()
+    await expect(page.getByRole('button', { name: 'Archive' })).toBeVisible()
+    await page.getByRole('button', { name: 'Duplicate' }).click()
+    await expect(page.locator('[data-testid^="sidebar-page-link-"]')).toHaveCount(countBeforeDuplicate + 1)
+
+    const duplicatedPageId = currentPageId(page)
+    await expect(page.getByTestId('page-toolbar-title')).toContainText(`${renamedTitle} Copy`)
+
+    page.once('dialog', (dialog) => dialog.accept())
+    await page.getByTestId('page-more-actions').click()
+    await page.getByRole('button', { name: 'Archive' }).click()
+    await expect(page.getByTestId(`sidebar-page-link-${duplicatedPageId}`)).toHaveCount(0)
+    await expect(page).not.toHaveURL(new RegExp(duplicatedPageId))
+  })
+
   test('layout drag reorder persists after reload', async ({ page }) => {
     await page.goto('/')
     await createPageFromSidebar(page, `Layout page ${Date.now()}`)
@@ -174,6 +226,58 @@ test.describe('v2 workspace', () => {
       await expect(page.getByTestId('app-sidebar')).toBeVisible()
       await expect(page.getByTestId('app-header')).toBeVisible()
     }
+  })
+
+  test('activity toolbar can switch the chart metric', async ({ page }) => {
+    await page.goto('/activity')
+
+    await expect(page.getByTestId('app-header')).toContainText('Activity')
+    await expect(page.getByRole('button', { name: /Commit Count/ })).toBeVisible()
+
+    await page.getByRole('button', { name: /Commit Count/ }).click()
+    await page.getByRole('menuitemradio', { name: 'Lines Added' }).click()
+
+    await expect(page.getByRole('button', { name: /Lines Added/ })).toBeVisible()
+    await expect(page).toHaveURL(/metric=lines_added/)
+  })
+
+  test('activity chart can be resized and exposes area zoom mode', async ({ page }) => {
+    await page.goto('/activity?range=90d&group=none')
+    await ensureLegacySync(page)
+    await page.goto('/activity?range=90d&group=none')
+
+    const chart = page.getByTestId('activity-chart')
+    await expect(chart).toBeVisible()
+    await expect(page.locator('.explorer-chart__canvas canvas')).toBeVisible()
+    await expect(page.getByTestId('activity-chart-zoom')).toBeVisible()
+    await expect(page.getByTestId('activity-chart-reset-zoom')).toBeDisabled()
+
+    const before = await chart.boundingBox()
+    expect(before).not.toBeNull()
+
+    const handle = page.getByTestId('activity-chart-resize-handle')
+    const handleBox = await handle.boundingBox()
+    expect(handleBox).not.toBeNull()
+    await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2 + 120)
+    await page.mouse.up()
+
+    const after = await chart.boundingBox()
+    expect(after).not.toBeNull()
+    expect(after!.height).toBeGreaterThan(before!.height + 80)
+
+    await page.getByTestId('activity-chart-zoom').click()
+    await expect(page.getByTestId('activity-chart-zoom')).toHaveAttribute('aria-pressed', 'true')
+
+    const canvasBox = await page.locator('.explorer-chart__canvas').boundingBox()
+    expect(canvasBox).not.toBeNull()
+    await page.mouse.move(canvasBox!.x + 90, canvasBox!.y + 45)
+    await page.mouse.down()
+    await page.mouse.move(canvasBox!.x + 260, canvasBox!.y + 130)
+    await page.mouse.up()
+
+    await expect(page.getByTestId('activity-chart-reset-zoom')).toBeEnabled()
   })
 
   test('sidebar reflects the phase 1 information architecture', async ({ page }) => {
@@ -398,6 +502,23 @@ async function addWidgetFromDialog(page: Page, widgetTitle: string) {
   await page.getByTestId('page-add-widget').click()
   await expect(page.getByRole('dialog', { name: 'Widget picker' })).toBeVisible()
   await page.getByRole('button', { name: new RegExp(widgetTitle, 'i') }).click()
+}
+
+async function addPageFilter(page: Page, payload: { field: string; values: string }) {
+  const inlineAddFilter = page.getByTestId('page-add-filter')
+  if (await inlineAddFilter.isVisible().catch(() => false)) {
+    await inlineAddFilter.click()
+  } else {
+    await page.getByTestId('page-toolbar-overflow').click()
+    const overflowMenu = page.locator('.workspace-page-header-controls__overflow-menu').last()
+    await expect(overflowMenu).toBeVisible()
+    await overflowMenu.getByRole('button', { name: /^\+ Filter/ }).click()
+  }
+  const filterMenu = page.locator('.workspace-page-header-controls__filter-menu').last()
+  await expect(filterMenu).toBeVisible()
+  await filterMenu.locator('select').nth(0).selectOption(payload.field)
+  await filterMenu.getByPlaceholder('frontend, api').fill(payload.values)
+  await filterMenu.getByRole('button', { name: 'Add filter' }).click()
 }
 
 async function dragWidgetByHandle(page: Page, widgetId: string, delta: { x: number; y: number }) {

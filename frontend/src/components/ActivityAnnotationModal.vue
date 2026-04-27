@@ -271,9 +271,10 @@ function handleDialogKeydown(event: KeyboardEvent) {
   position: fixed;
   inset: 0;
   z-index: 40;
-  display: grid;
-  place-items: center;
-  padding: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 78px 44px 24px;
 }
 .am-shell__backdrop {
   position: absolute;
@@ -285,9 +286,9 @@ function handleDialogKeydown(event: KeyboardEvent) {
 .am-modal {
   position: relative;
   z-index: 1;
-  width: 480px;
+  width: 370px;
   max-width: 100%;
-  height: 520px;
+  height: auto;
   max-height: calc(100vh - 48px);
   border-radius: 12px;
   background: #ffffff;
@@ -301,13 +302,13 @@ function handleDialogKeydown(event: KeyboardEvent) {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 52px;
-  padding: 0 20px;
+  height: 42px;
+  padding: 0 14px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.22);
   flex-shrink: 0;
 }
 .am-header__title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   color: #162033;
   margin: 0;
@@ -328,16 +329,16 @@ function handleDialogKeydown(event: KeyboardEvent) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 20px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 .am-context {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 8px;
   background: #f8f9fa;
@@ -386,7 +387,7 @@ function handleDialogKeydown(event: KeyboardEvent) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 5px 9px;
   border-radius: 6px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: transparent;
@@ -413,12 +414,12 @@ function handleDialogKeydown(event: KeyboardEvent) {
   box-sizing: border-box;
 }
 .am-input {
-  height: 36px;
-  padding: 0 12px;
+  height: 30px;
+  padding: 0 10px;
 }
 .am-textarea {
-  min-height: 72px;
-  padding: 10px 12px;
+  min-height: 58px;
+  padding: 8px 10px;
   resize: none;
   line-height: 1.5;
 }
@@ -482,16 +483,16 @@ function handleDialogKeydown(event: KeyboardEvent) {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 60px;
-  padding: 0 20px;
+  height: 48px;
+  padding: 0 14px;
   border-top: 1px solid rgba(148, 163, 184, 0.22);
   flex-shrink: 0;
   justify-content: flex-end;
 }
 .am-btn {
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 13px;
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -515,5 +516,12 @@ function handleDialogKeydown(event: KeyboardEvent) {
 .am-btn--save:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .am-shell {
+    justify-content: center;
+    padding: 24px;
+  }
 }
 </style>

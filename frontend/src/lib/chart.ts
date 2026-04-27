@@ -8,6 +8,7 @@ import {
   LegendComponent,
   MarkLineComponent,
   TitleComponent,
+  ToolboxComponent,
   TooltipComponent,
 } from 'echarts/components'
 import type { EChartsOption } from 'echarts'
@@ -27,6 +28,7 @@ use([
   LegendComponent,
   DataZoomComponent,
   MarkLineComponent,
+  ToolboxComponent,
   TitleComponent,
 ])
 

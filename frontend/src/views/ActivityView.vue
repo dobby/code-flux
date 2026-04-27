@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   GitCommitHorizontal,
@@ -23,6 +23,31 @@ const dashboard = useDashboardStore()
 const explorer = useActivityStore()
 const appearance = useAppearanceStore()
 const { isDark } = useTheme()
+const chartRef = ref<InstanceType<typeof VChart> | null>(null)
+const minChartHeight = 180
+const maxChartHeight = 560
+const chartHeightStorageKey = 'code-flux-activity-chart-height'
+const chartHeight = ref(loadChartHeight())
+const chartZoomSelecting = ref(false)
+const chartZoomed = ref(false)
+const chartSelectionStarted = ref(false)
+let chartResizeStart: { pointerId: number; startY: number; startHeight: number } | null = null
+
+function loadChartHeight() {
+  if (typeof window === 'undefined') {
+    return 220
+  }
+  const stored = Number(window.localStorage.getItem(chartHeightStorageKey) ?? '')
+  return Number.isFinite(stored) ? clampChartHeight(stored) : 220
+}
+
+function clampChartHeight(value: number) {
+  return Math.max(minChartHeight, Math.min(maxChartHeight, Math.round(value)))
+}
+
+const chartSectionStyle = computed(() => ({
+  height: `${chartHeight.value}px`,
+}))
 
 const metricNoun = computed(() => {
   switch (explorer.metric) {
@@ -236,9 +261,27 @@ const chartOption = computed<EChartsOption>(() => {
       left: 0,
       right: chartLegendVisible.value ? 76 : 0,
       top: 8,
-      bottom: 8,
+      bottom: 20,
       containLabel: true,
     },
+    toolbox: {
+      show: false,
+      feature: {
+        dataZoom: {
+          yAxisIndex: false,
+        },
+      },
+    },
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        filterMode: 'filter',
+        zoomOnMouseWheel: 'shift',
+        moveOnMouseMove: true,
+        moveOnMouseWheel: true,
+      },
+    ],
     xAxis: {
       type: 'category',
       data: chartDays.value,
@@ -338,6 +381,85 @@ function handleExplorerChartClick(event: {
   explorer.syncQueryToUrl(router)
 }
 
+function enableChartAreaZoom() {
+  chartZoomSelecting.value = !chartZoomSelecting.value
+  chartRef.value?.dispatchAction({
+    type: 'takeGlobalCursor',
+    key: 'dataZoomSelect',
+    dataZoomSelectActive: chartZoomSelecting.value,
+  })
+}
+
+function resetChartZoom() {
+  chartRef.value?.dispatchAction({
+    type: 'dataZoom',
+    start: 0,
+    end: 100,
+  })
+  chartZoomed.value = false
+  chartZoomSelecting.value = false
+  chartSelectionStarted.value = false
+  chartRef.value?.dispatchAction({
+    type: 'takeGlobalCursor',
+    key: 'dataZoomSelect',
+    dataZoomSelectActive: false,
+  })
+}
+
+function handleChartDataZoom() {
+  chartZoomed.value = true
+  chartZoomSelecting.value = false
+  chartSelectionStarted.value = false
+}
+
+function beginChartSelection() {
+  if (chartZoomSelecting.value) {
+    chartSelectionStarted.value = true
+  }
+}
+
+function finishChartSelection() {
+  if (!chartSelectionStarted.value) {
+    return
+  }
+  chartZoomed.value = true
+  chartZoomSelecting.value = false
+  chartSelectionStarted.value = false
+}
+
+function beginChartResize(event: PointerEvent) {
+  if (!(event.currentTarget instanceof HTMLElement)) {
+    return
+  }
+  chartResizeStart = {
+    pointerId: event.pointerId,
+    startY: event.clientY,
+    startHeight: chartHeight.value,
+  }
+  event.currentTarget.setPointerCapture(event.pointerId)
+  window.addEventListener('pointermove', handleChartResizeMove)
+  window.addEventListener('pointerup', finishChartResize, { once: true })
+  window.addEventListener('pointercancel', finishChartResize, { once: true })
+}
+
+function handleChartResizeMove(event: PointerEvent) {
+  if (!chartResizeStart || event.pointerId !== chartResizeStart.pointerId) {
+    return
+  }
+  chartHeight.value = clampChartHeight(chartResizeStart.startHeight + event.clientY - chartResizeStart.startY)
+}
+
+function finishChartResize(event: PointerEvent) {
+  if (chartResizeStart && event.pointerId === chartResizeStart.pointerId) {
+    window.localStorage.setItem(chartHeightStorageKey, String(chartHeight.value))
+    void nextTick(() => chartRef.value?.resize?.())
+  }
+  chartResizeStart = null
+  window.removeEventListener('pointermove', handleChartResizeMove)
+  window.removeEventListener('pointerup', finishChartResize)
+  window.removeEventListener('pointercancel', finishChartResize)
+}
+
 function resolveSeriesKey(event: { seriesId?: string; seriesName?: string }) {
   if (typeof event.seriesId === 'string' && event.seriesId) {
     return event.seriesId
@@ -428,6 +550,7 @@ watch(
     explorer.compareCustomRange?.to ?? '',
   ] as const,
   () => {
+    resetChartZoom()
     void explorer.refreshActivity().then(() => explorer.syncQueryToUrl(router))
   },
 )
@@ -475,11 +598,17 @@ onMounted(async () => {
   }
   await explorer.refreshActivity()
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', handleChartResizeMove)
+  window.removeEventListener('pointerup', finishChartResize)
+  window.removeEventListener('pointercancel', finishChartResize)
+})
 </script>
 
 <template>
   <section class="explorer-view">
-    <section class="explorer-chart">
+    <section class="explorer-chart" :style="chartSectionStyle" data-testid="activity-chart">
       <div class="explorer-chart__header">
         <div class="explorer-chart__header-main">
           <span class="explorer-chart__title">{{ explorer.metricLabel }}</span>
@@ -498,8 +627,33 @@ onMounted(async () => {
             {{ explorer.compareDeltaLabel }}
           </span>
         </div>
+        <div class="explorer-chart__tools" aria-label="Chart tools">
+          <button
+            class="explorer-chart__tool"
+            :class="{ 'explorer-chart__tool--active': chartZoomSelecting }"
+            type="button"
+            :aria-pressed="chartZoomSelecting"
+            data-testid="activity-chart-zoom"
+            @click="enableChartAreaZoom"
+          >
+            Zoom area
+          </button>
+          <button
+            class="explorer-chart__tool"
+            type="button"
+            :disabled="!chartZoomed"
+            data-testid="activity-chart-reset-zoom"
+            @click="resetChartZoom"
+          >
+            Reset
+          </button>
+        </div>
       </div>
-      <div class="explorer-chart__canvas-wrap">
+      <div
+        class="explorer-chart__canvas-wrap"
+        @pointerdown="beginChartSelection"
+        @pointerup="finishChartSelection"
+      >
         <div v-if="explorer.analyticsError" class="explorer-chart__empty explorer-chart__empty--error">
           <span>{{ explorer.analyticsError }}</span>
           <button class="explorer-chart__retry" type="button" @click="explorer.loadAnalytics()">Retry</button>
@@ -512,15 +666,27 @@ onMounted(async () => {
         </div>
         <VChart
           v-if="!explorer.analyticsError && chartDays.length"
+          ref="chartRef"
           class="explorer-chart__canvas"
           :style="chartCanvasStyle"
           :option="chartOption"
           :autoresize="true"
           @click="handleExplorerChartClick"
+          @datazoom="handleChartDataZoom"
         />
         <div v-else class="explorer-chart__empty">
           {{ explorer.loadingAnalytics ? 'Loading activity…' : 'No activity yet.' }}
         </div>
+      </div>
+      <div
+        class="explorer-chart__resize-handle"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize chart"
+        data-testid="activity-chart-resize-handle"
+        @pointerdown.prevent="beginChartResize"
+      >
+        <span />
       </div>
     </section>
 
@@ -710,10 +876,9 @@ onMounted(async () => {
 .explorer-chart {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  height: 220px;
+  gap: 6px;
   flex-shrink: 0;
-  padding: 16px 20px;
+  padding: 16px 20px 0;
   border-bottom: 1px solid rgba(148, 163, 184, 0.22);
   background: transparent;
 }
@@ -778,6 +943,36 @@ onMounted(async () => {
   color: var(--cf-accent);
 }
 
+.explorer-chart__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.explorer-chart__tool {
+  border: 1px solid var(--cf-border);
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--cf-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.explorer-chart__tool:hover:not(:disabled),
+.explorer-chart__tool--active {
+  border-color: color-mix(in srgb, var(--cf-accent) 32%, transparent);
+  background: var(--cf-accent-subtle);
+  color: var(--cf-accent);
+}
+
+.explorer-chart__tool:disabled {
+  cursor: default;
+  opacity: 0.46;
+}
 
 .explorer-chart__canvas-wrap {
   flex: 1;
@@ -830,6 +1025,28 @@ onMounted(async () => {
   font-weight: 500;
   padding: 4px 10px;
   cursor: pointer;
+}
+
+.explorer-chart__resize-handle {
+  display: grid;
+  place-items: center;
+  height: 14px;
+  margin: 0 -20px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.explorer-chart__resize-handle span {
+  width: 44px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.34);
+  transition: background 140ms ease, width 140ms ease;
+}
+
+.explorer-chart__resize-handle:hover span {
+  width: 56px;
+  background: color-mix(in srgb, var(--cf-accent) 45%, rgba(148, 163, 184, 0.45));
 }
 
 .explorer-split {
